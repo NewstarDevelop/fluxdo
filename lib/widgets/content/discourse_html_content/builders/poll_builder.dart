@@ -9,6 +9,7 @@ Widget buildPoll({
   required dynamic element,
   required Post post,
 }) {
+  final pollTitle = _extractPollTitle(element);
   final pollName = element.attributes['data-poll-name'] ?? 'poll';
   final poll = post.polls?.firstWhere((p) => p.name == pollName, orElse: () => Poll(id: 0, name: pollName, type: 'regular', status: 'open', results: 'always', options: [], voters: 0));
 
@@ -20,6 +21,7 @@ Widget buildPoll({
 
   return _PollWidget(
     poll: poll,
+    title: pollTitle,
     post: post,
     userVotes: userVotes,
     onPollUpdated: (updatedPoll, updatedVotes) {
@@ -34,14 +36,41 @@ Widget buildPoll({
   );
 }
 
+String? _extractPollTitle(dynamic element) {
+  final attributeTitle = element.attributes['data-poll-question'] ?? element.attributes['data-poll-title'];
+  if (attributeTitle is String && attributeTitle.trim().isNotEmpty) {
+    return attributeTitle.trim();
+  }
+
+  final pollTitleElements = element.getElementsByClassName('poll-title');
+  if (pollTitleElements.isNotEmpty) {
+    final text = pollTitleElements.first.text.trim();
+    if (text.isNotEmpty) {
+      return text;
+    }
+  }
+
+  final pollQuestionElements = element.getElementsByClassName('poll-question');
+  if (pollQuestionElements.isNotEmpty) {
+    final text = pollQuestionElements.first.text.trim();
+    if (text.isNotEmpty) {
+      return text;
+    }
+  }
+
+  return null;
+}
+
 class _PollWidget extends StatefulWidget {
   final Poll poll;
+  final String? title;
   final Post post;
   final List<String> userVotes;
   final Function(Poll, List<String>) onPollUpdated;
 
   const _PollWidget({
     required this.poll,
+    this.title,
     required this.post,
     required this.userVotes,
     required this.onPollUpdated,
@@ -213,6 +242,16 @@ class _PollWidgetState extends State<_PollWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (widget.title != null && widget.title!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              child: Text(
+                widget.title!,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           if (_showResults)
             _buildResults(theme)
           else
