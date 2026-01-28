@@ -24,6 +24,7 @@ import 'controllers/post_visibility_tracker.dart';
 import 'controllers/topic_scroll_controller.dart';
 import 'widgets/topic_detail_overlay.dart';
 import 'widgets/topic_post_list.dart';
+import 'widgets/topic_detail_header.dart';
 
 /// 话题详情页面
 class TopicDetailPage extends ConsumerStatefulWidget {
@@ -42,7 +43,7 @@ class TopicDetailPage extends ConsumerStatefulWidget {
   ConsumerState<TopicDetailPage> createState() => _TopicDetailPageState();
 }
 
-class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsBindingObserver {
+class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   /// 唯一实例 ID，确保每次打开页面都创建新的 provider 实例
   final String _instanceId = const Uuid().v4();
 
@@ -60,6 +61,10 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   bool _isCheckTitleVisibilityScheduled = false;
   bool _isRefreshing = false;
 
+  bool _isOverlayVisible = false;
+  bool _isScrolledUnder = false;
+  late final AnimationController _expandController;
+  late final Animation<Offset> _animation;
   Timer? _throttleTimer;
   bool _isScrollToBottomScheduled = false;
   Set<int> _lastReadPostNumbers = {};
@@ -68,6 +73,25 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    _expandController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    
+    _animation = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _expandController,
+      curve: Curves.easeOutCubic,
+    ))..addStatusListener((status) {
+      if (status == AnimationStatus.forward) {
+        setState(() => _isOverlayVisible = true);
+      } else if (status == AnimationStatus.dismissed) {
+        setState(() => _isOverlayVisible = false);
+      }
+    });
 
     final trackEnabled = ref.read(currentUserProvider).value != null;
 
@@ -114,6 +138,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   void dispose() {
     _throttleTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _expandController.dispose();
     _scrollController.scrollController.removeListener(_onScroll);
     _scrollController.removeListener(_onScrollStateChanged);
     _highlightController.removeListener(_onHighlightChanged);
@@ -156,6 +181,14 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
 
   void _onScroll() {
     if (_isRefreshing) return;
+
+    if (_scrollController.scrollController.hasClients) {
+      final isScrolled = _scrollController.scrollController.offset > 0;
+      if (isScrolled != _isScrolledUnder) {
+        setState(() => _isScrolledUnder = isScrolled);
+      }
+    }
+
     _scheduleCheckTitleVisibility();
     _scrollController.handleScroll();
 
@@ -581,6 +614,148 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     }
   }
 
+
+  void _toggleExpandedHeader() {
+    if (_expandController.status == AnimationStatus.completed || 
+        _expandController.status == AnimationStatus.forward) {
+      _expandController.reverse();
+    } else {
+      _expandController.forward();
+    }
+  }
+
+  /// 构建带动画的 AppBar
+  PreferredSizeWidget _buildAppBar({
+    required ThemeData theme,
+    required TopicDetail? detail,
+    required dynamic notifier,
+  }) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight),
+      child: AnimatedBuilder(
+        animation: _expandController,
+        builder: (context, child) {
+          final targetElevation = _isScrolledUnder ? 3.0 : 0.0;
+          final currentElevation = targetElevation * (1.0 - _expandController.value);
+          final expandProgress = _expandController.value;
+          final shouldShowTitle = _showTitle || !_hasFirstPost;
+
+          return AppBar(
+            elevation: currentElevation,
+            scrolledUnderElevation: currentElevation,
+            shadowColor: Colors.transparent,
+            surfaceTintColor: theme.colorScheme.surfaceTint.withOpacity((1.0 - expandProgress).clamp(0.0, 1.0)),
+            backgroundColor: theme.colorScheme.surface,
+            title: _buildAppBarTitle(
+              theme: theme,
+              detail: detail,
+              shouldShowTitle: shouldShowTitle,
+              expandProgress: expandProgress,
+            ),
+            centerTitle: false,
+            actions: _buildAppBarActions(
+              detail: detail,
+              notifier: notifier,
+              shouldShowTitle: shouldShowTitle,
+              expandProgress: expandProgress,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 构建 AppBar 标题
+  Widget _buildAppBarTitle({
+    required ThemeData theme,
+    required TopicDetail? detail,
+    required bool shouldShowTitle,
+    required double expandProgress,
+  }) {
+    return Opacity(
+      opacity: shouldShowTitle ? (1.0 - expandProgress).clamp(0.0, 1.0) : 0.0,
+      child: GestureDetector(
+        onTap: () {
+          if (shouldShowTitle && detail != null) {
+            _toggleExpandedHeader();
+          }
+        },
+        child: Text.rich(
+          TextSpan(
+            style: theme.textTheme.titleMedium,
+            children: [
+              if (detail?.closed ?? false)
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.lock_outline,
+                      size: 18,
+                      color: theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ...EmojiText.buildEmojiSpans(context, detail?.title ?? widget.initialTitle ?? '', theme.textTheme.titleMedium),
+            ],
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
+  /// 构建 AppBar Actions
+  List<Widget> _buildAppBarActions({
+    required TopicDetail? detail,
+    required dynamic notifier,
+    required bool shouldShowTitle,
+    required double expandProgress,
+  }) {
+    if (detail == null || !shouldShowTitle) {
+      return [];
+    }
+
+    return [
+      IgnorePointer(
+        ignoring: expandProgress > 0.0,
+        child: Opacity(
+          opacity: (1.0 - expandProgress).clamp(0.0, 1.0),
+          child: PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: '更多选项',
+            onSelected: (value) {
+              if (value == 'subscribe') {
+                showNotificationLevelSheet(
+                  context,
+                  detail.notificationLevel,
+                  (level) => _handleNotificationLevelChanged(notifier, level),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'subscribe',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      TopicNotificationButton.getIcon(detail.notificationLevel),
+                      size: 20,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('订阅设置'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
   void _showTimelineSheet(TopicDetail detail) {
     showTopicTimelineSheet(
       context: context,
@@ -656,67 +831,10 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
 
     return LazyLoadScope(
       child: Scaffold(
-        appBar: AppBar(
-          title: AnimatedOpacity(
-            opacity: _showTitle || !_hasFirstPost ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
-            child: Text.rich(
-              TextSpan(
-                style: theme.textTheme.titleMedium,
-                children: [
-                  if (detail?.closed ?? false)
-                    WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Icon(
-                          Icons.lock_outline,
-                          size: 18,
-                          color: theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                  ...EmojiText.buildEmojiSpans(context, detail?.title ?? widget.initialTitle ?? '', theme.textTheme.titleMedium),
-                ],
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          centerTitle: false,
-          actions: [
-            // 更多菜单（当标题显示时，包含订阅选项）
-            if (detail != null && (_showTitle || !_hasFirstPost))
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                tooltip: '更多选项',
-                onSelected: (value) {
-                  if (value == 'subscribe') {
-                    showNotificationLevelSheet(
-                      context,
-                      detail.notificationLevel,
-                      (level) => _handleNotificationLevelChanged(notifier, level),
-                    );
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'subscribe',
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          TopicNotificationButton.getIcon(detail.notificationLevel),
-                          size: 20,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('订阅设置'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-          ],
+        appBar: _buildAppBar(
+          theme: theme,
+          detail: detail,
+          notifier: notifier,
         ),
         body: _buildBody(context, detailAsync, detail, notifier, isLoggedIn, typingUsers),
       ),
@@ -731,7 +849,6 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     bool isLoggedIn,
     List<TypingUser> typingUsers,
   ) {
-    final theme = Theme.of(context);
     final params = TopicDetailParams(widget.topicId, postNumber: _scrollController.currentPostNumber, instanceId: _instanceId);
 
     // 初始加载 loading
@@ -740,20 +857,11 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       return PostListSkeleton(withHeader: showHeaderSkeleton);
     }
 
-    // 跳转中：等待包含目标帖子的新数据
-    if (_scrollController.jumpTargetPostNumber != null && detail != null) {
-      final posts = detail.postStream.posts;
-      final hasTarget = posts.isNotEmpty &&
-          posts.first.postNumber <= _scrollController.jumpTargetPostNumber! &&
-          posts.last.postNumber >= _scrollController.jumpTargetPostNumber!;
-      if (!hasTarget) {
-        return const PostListSkeleton();
-      }
-    }
+    Widget content = const SizedBox();
 
-    // 错误
     if (detailAsync.hasError && detail == null) {
-      return CustomScrollView(
+      // 错误页面
+      content = CustomScrollView(
         slivers: [
           SliverFillRemaining(
             hasScrollBody: false,
@@ -775,15 +883,89 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
           ),
         ],
       );
+    } else if (detail != null) {
+       // 正常内容构建 (保持原有逻辑，但简化提取)
+       content = _buildPostListContent(context, detail, notifier, isLoggedIn, typingUsers);
     }
 
-    if (detail == null) return const SizedBox();
+    // Stack 组装
+    return Stack(
+        children: [
+          content,
+          
+          // TopicDetailOverlay (Bottom Bar) - 应该在 Header 下面还是上面？
+          // 原有实现是 Stack 覆盖在 content 上。
+          if (detail != null)
+            TopicDetailOverlay(
+              showBottomBar: _scrollController.showBottomBar,
+              isLoggedIn: isLoggedIn,
+              currentStreamIndex: _visibilityTracker.currentVisibleStreamIndex,
+              totalCount: detail.postStream.stream.length,
+              detail: detail,
+              onScrollToTop: _scrollToTop,
+              onShare: _shareTopic,
+              onOpenInBrowser: _openInBrowser,
+              onReply: () => _handleReply(null),
+              onProgressTap: () => _showTimelineSheet(detail),
+            ),
 
+          // Expanded Header Barrier
+          if (_isOverlayVisible)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _toggleExpandedHeader,
+                child: FadeTransition(
+                  opacity: _expandController,
+                  child: Container(color: Colors.black54),
+                ),
+              ),
+            ),
+
+          // Expanded Header
+          if (_isOverlayVisible && detail != null)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SlideTransition(
+                position: _animation,
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.7,
+                  ),
+                  child: Material(
+                    color: Theme.of(context).colorScheme.surface,
+                    elevation: 0,
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                    clipBehavior: Clip.antiAlias,
+                    child: SingleChildScrollView(
+                      child: TopicDetailHeader(
+                        detail: detail,
+                        headerKey: null,
+                        onVoteChanged: _handleVoteChanged,
+                        onNotificationLevelChanged: (level) => _handleNotificationLevelChanged(notifier, level),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+  }
+
+  Widget _buildPostListContent(
+    BuildContext context,
+    TopicDetail detail,
+    dynamic notifier,
+    bool isLoggedIn,
+    List<TypingUser> typingUsers,
+  ) {
     final posts = detail.postStream.posts;
     final hasFirstPost = posts.isNotEmpty && posts.first.postNumber == 1;
     final sessionState = ref.watch(topicSessionProvider(widget.topicId));
-
-    if (posts.isNotEmpty) {
+  
+     if (posts.isNotEmpty) {
       final readPostNumbers = <int>{};
       for (final post in posts) {
         if (post.read) {
@@ -856,27 +1038,10 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       child: scrollView,
     );
 
-    final content = Opacity(
+    return Opacity(
       opacity: _scrollController.isPositioned ? 1.0 : 0.0,
       child: scrollView,
     );
 
-    return Stack(
-      children: [
-        content,
-        TopicDetailOverlay(
-          showBottomBar: _scrollController.showBottomBar,
-          isLoggedIn: isLoggedIn,
-          currentStreamIndex: _visibilityTracker.currentVisibleStreamIndex,
-          totalCount: detail.postStream.stream.length,
-          detail: detail,
-          onScrollToTop: _scrollToTop,
-          onShare: _shareTopic,
-          onOpenInBrowser: _openInBrowser,
-          onReply: () => _handleReply(null),
-          onProgressTap: () => _showTimelineSheet(detail),
-        ),
-      ],
-    );
   }
 }
