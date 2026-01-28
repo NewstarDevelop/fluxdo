@@ -1091,6 +1091,17 @@ class DiscourseService {
     }
   }
 
+  /// 设置话题订阅级别
+  /// [topicId] 话题 ID
+  /// [level] 订阅级别
+  Future<void> setTopicNotificationLevel(int topicId, TopicNotificationLevel level) async {
+    await _dio.post(
+      '/t/$topicId/notifications',
+      data: {'notification_level': level.value},
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+    );
+  }
+
   /// 创建回复
   /// [topicId] 话题 ID
   /// [raw] 回复内容（Markdown）

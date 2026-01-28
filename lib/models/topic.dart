@@ -1,6 +1,26 @@
 /// 帖子数据模型
 import '../utils/time_utils.dart';
 
+/// 话题订阅级别
+enum TopicNotificationLevel {
+  muted(0, '静音', '不接收任何通知'),
+  regular(1, '常规', '只在被 @ 提及或回复时通知'),
+  tracking(2, '跟踪', '显示未读计数'),
+  watching(3, '关注', '每个新回复都通知');
+
+  const TopicNotificationLevel(this.value, this.label, this.description);
+  final int value;
+  final String label;
+  final String description;
+
+  static TopicNotificationLevel fromValue(int? value) {
+    return TopicNotificationLevel.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => TopicNotificationLevel.regular,
+    );
+  }
+}
+
 /// 投票选项
 class PollOption {
   final String id;
@@ -480,6 +500,9 @@ class TopicDetail {
   final bool summarizable;        // 话题是否可摘要（后端控制）
   final bool hasCachedSummary;    // 是否有缓存的摘要
 
+  // 订阅级别
+  final TopicNotificationLevel notificationLevel;
+
   TopicDetail({
     required this.id,
     required this.title,
@@ -500,6 +523,7 @@ class TopicDetail {
     this.userVoted = false,
     this.summarizable = false,
     this.hasCachedSummary = false,
+    this.notificationLevel = TopicNotificationLevel.regular,
   });
 
   factory TopicDetail.fromJson(Map<String, dynamic> json) {
@@ -523,6 +547,56 @@ class TopicDetail {
       userVoted: json['user_voted'] as bool? ?? false,
       summarizable: json['summarizable'] as bool? ?? false,
       hasCachedSummary: json['has_cached_summary'] as bool? ?? false,
+      notificationLevel: TopicNotificationLevel.fromValue(
+        (json['details'] as Map<String, dynamic>?)?['notification_level'] as int?,
+      ),
+    );
+  }
+
+  /// 创建修改后的副本
+  TopicDetail copyWith({
+    int? id,
+    String? title,
+    String? slug,
+    int? postsCount,
+    PostStream? postStream,
+    int? categoryId,
+    bool? closed,
+    bool? archived,
+    List<String>? tags,
+    int? views,
+    int? likeCount,
+    DateTime? createdAt,
+    bool? visible,
+    int? lastReadPostNumber,
+    bool? canVote,
+    int? voteCount,
+    bool? userVoted,
+    bool? summarizable,
+    bool? hasCachedSummary,
+    TopicNotificationLevel? notificationLevel,
+  }) {
+    return TopicDetail(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      slug: slug ?? this.slug,
+      postsCount: postsCount ?? this.postsCount,
+      postStream: postStream ?? this.postStream,
+      categoryId: categoryId ?? this.categoryId,
+      closed: closed ?? this.closed,
+      archived: archived ?? this.archived,
+      tags: tags ?? this.tags,
+      views: views ?? this.views,
+      likeCount: likeCount ?? this.likeCount,
+      createdAt: createdAt ?? this.createdAt,
+      visible: visible ?? this.visible,
+      lastReadPostNumber: lastReadPostNumber ?? this.lastReadPostNumber,
+      canVote: canVote ?? this.canVote,
+      voteCount: voteCount ?? this.voteCount,
+      userVoted: userVoted ?? this.userVoted,
+      summarizable: summarizable ?? this.summarizable,
+      hasCachedSummary: hasCachedSummary ?? this.hasCachedSummary,
+      notificationLevel: notificationLevel ?? this.notificationLevel,
     );
   }
 }

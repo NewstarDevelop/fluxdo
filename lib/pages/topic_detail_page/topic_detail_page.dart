@@ -16,6 +16,7 @@ import '../../widgets/content/lazy_load_scope.dart';
 import '../../widgets/post/post_item_skeleton.dart';
 import '../../widgets/post/reply_sheet.dart';
 import '../../widgets/topic/topic_progress.dart';
+import '../../widgets/topic/topic_notification_button.dart';
 import '../../widgets/common/emoji_text.dart';
 import '../../widgets/content/discourse_html_content/chunked/chunked_html_content.dart';
 import 'controllers/post_highlight_controller.dart';
@@ -563,6 +564,23 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     });
   }
 
+  void _handleNotificationLevelChanged(dynamic notifier, TopicNotificationLevel level) async {
+    try {
+      await notifier.updateNotificationLevel(level);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已设置为${level.label}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('设置失败: $e')),
+        );
+      }
+    }
+  }
+
   void _showTimelineSheet(TopicDetail detail) {
     showTopicTimelineSheet(
       context: context,
@@ -665,6 +683,40 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
             ),
           ),
           centerTitle: false,
+          actions: [
+            // 更多菜单（当标题显示时，包含订阅选项）
+            if (detail != null && (_showTitle || !_hasFirstPost))
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                tooltip: '更多选项',
+                onSelected: (value) {
+                  if (value == 'subscribe') {
+                    showNotificationLevelSheet(
+                      context,
+                      detail.notificationLevel,
+                      (level) => _handleNotificationLevelChanged(notifier, level),
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'subscribe',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          TopicNotificationButton.getIcon(detail.notificationLevel),
+                          size: 20,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text('订阅设置'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+          ],
         ),
         body: _buildBody(context, detailAsync, detail, notifier, isLoggedIn, typingUsers),
       ),
@@ -790,6 +842,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       onReply: _handleReply,
       onEdit: _handleEdit,
       onVoteChanged: _handleVoteChanged,
+      onNotificationLevelChanged: (level) => _handleNotificationLevelChanged(notifier, level),
       onScrollNotification: _scrollController.handleScrollNotification,
     );
 

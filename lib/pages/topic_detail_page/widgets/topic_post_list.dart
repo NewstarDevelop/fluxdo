@@ -28,6 +28,7 @@ class TopicPostList extends StatelessWidget {
   final void Function(Post? replyToPost) onReply;
   final void Function(Post post) onEdit; // 编辑回调
   final void Function(int, bool) onVoteChanged;
+  final void Function(TopicNotificationLevel)? onNotificationLevelChanged;
   final bool Function(ScrollNotification) onScrollNotification;
 
   const TopicPostList({
@@ -50,6 +51,7 @@ class TopicPostList extends StatelessWidget {
     required this.onReply,
     required this.onEdit,
     required this.onVoteChanged,
+    this.onNotificationLevelChanged,
     required this.onScrollNotification,
   });
 
@@ -91,6 +93,7 @@ class TopicPostList extends StatelessWidget {
                     detail: detail,
                     headerKey: headerKey,
                     onVoteChanged: onVoteChanged,
+                    onNotificationLevelChanged: onNotificationLevelChanged,
                   );
                 }
 
@@ -133,6 +136,7 @@ class TopicPostList extends StatelessWidget {
                     detail: detail,
                     headerKey: headerKey,
                     onVoteChanged: onVoteChanged,
+                    onNotificationLevelChanged: onNotificationLevelChanged,
                   );
                 }
 

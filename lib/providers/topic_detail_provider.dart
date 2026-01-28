@@ -552,6 +552,25 @@ class TopicDetailNotifier extends AsyncNotifier<TopicDetail> {
     ));
   }
 
+  /// 更新话题订阅级别
+  Future<void> updateNotificationLevel(TopicNotificationLevel level) async {
+    final currentDetail = state.value;
+    if (currentDetail == null) return;
+
+    try {
+      await ref.read(discourseServiceProvider).setTopicNotificationLevel(
+        currentDetail.id,
+        level,
+      );
+
+      // 更新本地状态
+      state = AsyncValue.data(currentDetail.copyWith(notificationLevel: level));
+    } catch (e) {
+      print('[TopicDetail] 更新订阅级别失败: $e');
+      rethrow;
+    }
+  }
+
   /// 使用新的起始帖子号重新加载数据
   /// 用于跳转到不在当前列表中的帖子
   Future<void> reloadWithPostNumber(int postNumber) async {

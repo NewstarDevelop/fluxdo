@@ -11,6 +11,7 @@ import '../../../widgets/topic/topic_summary_widget.dart';
 import '../../../widgets/common/emoji_text.dart';
 import '../../../utils/time_utils.dart';
 import '../../../utils/number_utils.dart';
+import '../../../widgets/topic/topic_notification_button.dart';
 import 'topic_vote_button.dart';
 
 /// 话题详情页头部组件
@@ -18,12 +19,14 @@ class TopicDetailHeader extends ConsumerWidget {
   final TopicDetail detail;
   final GlobalKey? headerKey;
   final void Function(int, bool)? onVoteChanged;
+  final void Function(TopicNotificationLevel)? onNotificationLevelChanged;
 
   const TopicDetailHeader({
     super.key,
     required this.detail,
     this.headerKey,
     this.onVoteChanged,
+    this.onNotificationLevelChanged,
   });
 
   @override
@@ -162,6 +165,13 @@ class TopicDetailHeader extends ConsumerWidget {
               TopicVoteButton(
                 topic: detail,
                 onVoteChanged: onVoteChanged,
+              ),
+              const SizedBox(width: 8),
+              // 订阅按钮
+              TopicNotificationButton(
+                level: detail.notificationLevel,
+                onChanged: onNotificationLevelChanged,
+                style: TopicNotificationButtonStyle.chip,
               ),
             ],
           ),
