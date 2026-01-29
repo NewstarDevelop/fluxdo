@@ -19,6 +19,7 @@ import '../widgets/common/loading_spinner.dart';
 import 'topic_detail_page/topic_detail_page.dart';
 import 'search_page.dart';
 import 'follow_list_page.dart';
+import 'image_viewer_page.dart';
 
 /// 用户个人页
 class UserProfilePage extends ConsumerStatefulWidget {
@@ -613,25 +614,40 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           // 1. 头像 radius=36，flair 大小 30，偏移 right=-7, bottom=-4
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: AvatarWithFlair(
-                              flairSize: 30,
-                              flairRight: -7,
-                              flairBottom: -4,
-                              flairUrl: _user?.flairUrl,
-                              flairName: _user?.flairName,
-                              flairBgColor: _user?.flairBgColor,
-                              flairColor: _user?.flairColor,
-                              avatar: CircleAvatar(
-                                radius: 36,
-                                backgroundColor: Colors.transparent,
-                                backgroundImage: _user?.getAvatarUrl() != null
-                                    ? discourseImageProvider(_user!.getAvatarUrl(size: 144))
-                                    : null,
+                          GestureDetector(
+                            onTap: () {
+                              if (_user?.getAvatarUrl() != null) {
+                                final avatarUrl = _user!.getAvatarUrl(size: 360);
+                                ImageViewerPage.open(
+                                  context,
+                                  avatarUrl,
+                                  heroTag: 'user_avatar_${_user!.username}',
+                                );
+                              }
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: AvatarWithFlair(
+                                flairSize: 30,
+                                flairRight: -7,
+                                flairBottom: -4,
+                                flairUrl: _user?.flairUrl,
+                                flairName: _user?.flairName,
+                                flairBgColor: _user?.flairBgColor,
+                                flairColor: _user?.flairColor,
+                                avatar: Hero(
+                                  tag: 'user_avatar_${_user?.username ?? ''}',
+                                  child: CircleAvatar(
+                                    radius: 36,
+                                    backgroundColor: Colors.transparent,
+                                    backgroundImage: _user?.getAvatarUrl() != null
+                                        ? discourseImageProvider(_user!.getAvatarUrl(size: 144))
+                                        : null,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
