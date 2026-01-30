@@ -1,4 +1,5 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../constants.dart';
 
 /// WebView 配置工具类
 /// 区分 Headless（后台同步）和 Visible（用户可见页面）两种场景
@@ -10,6 +11,7 @@ class WebViewSettings {
   static InAppWebViewSettings get headless => InAppWebViewSettings(
     javaScriptEnabled: true,
     sharedCookiesEnabled: true,
+    userAgent: AppConstants.userAgent,
 
     // 性能优化 - 不加载不必要的资源
     blockNetworkImage: true,
@@ -41,6 +43,7 @@ class WebViewSettings {
     javaScriptEnabled: true,
     sharedCookiesEnabled: true,
     domStorageEnabled: true,
+    userAgent: AppConstants.userAgent,
 
     // 保持完整功能
     blockNetworkImage: false,
