@@ -4,14 +4,17 @@ import '../../utils/responsive.dart';
 /// Master-Detail 双栏布局
 /// 平板/桌面上显示双栏，手机上只显示 master 或 detail
 class MasterDetailLayout extends StatelessWidget {
+  static const double defaultMasterWidth = 380;
+  static const double defaultMinDetailWidth = 400;
+
   const MasterDetailLayout({
     super.key,
     required this.master,
     this.detail,
     this.emptyDetail,
     this.masterFloatingActionButton,
-    this.masterWidth = 380,
-    this.minDetailWidth = 400,
+    this.masterWidth = defaultMasterWidth,
+    this.minDetailWidth = defaultMinDetailWidth,
     this.showDivider = true,
   });
 
@@ -37,9 +40,22 @@ class MasterDetailLayout extends StatelessWidget {
   final bool showDivider;
 
   /// 是否显示双栏布局
-  bool canShowBothPanes(BuildContext context) {
+  static bool canShowBothPanesFor(
+    BuildContext context, {
+    double masterWidth = defaultMasterWidth,
+    double minDetailWidth = defaultMinDetailWidth,
+  }) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     return screenWidth >= masterWidth + minDetailWidth && !Responsive.isMobile(context);
+  }
+
+  /// 是否显示双栏布局
+  bool canShowBothPanes(BuildContext context) {
+    return canShowBothPanesFor(
+      context,
+      masterWidth: masterWidth,
+      minDetailWidth: minDetailWidth,
+    );
   }
 
   @override

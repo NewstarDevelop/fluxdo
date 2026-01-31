@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/selected_topic_provider.dart';
 import '../providers/discourse_providers.dart';
-import '../utils/responsive.dart';
 import '../widgets/layout/master_detail_layout.dart';
 import 'topics_page.dart';
 import 'topic_detail_page/topic_detail_page.dart';
@@ -10,21 +9,76 @@ import 'create_topic_page.dart';
 
 /// 话题屏幕
 /// 在手机上显示单栏列表，平板上显示 Master-Detail 双栏
-class TopicsScreen extends ConsumerWidget {
+class TopicsScreen extends ConsumerStatefulWidget {
   const TopicsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TopicsScreen> createState() => _TopicsScreenState();
+}
+
+class _TopicsScreenState extends ConsumerState<TopicsScreen> {
+  bool? _lastCanShowDetailPane;
+  bool _isAutoSwitching = false;
+
+  void _maybePushDetail(SelectedTopicState selectedTopic, bool canShowDetailPane) {
+    final previous = _lastCanShowDetailPane;
+    _lastCanShowDetailPane = canShowDetailPane;
+
+    if (_isAutoSwitching || previous == null || previous == canShowDetailPane) {
+      return;
+    }
+
+    if (!previous && canShowDetailPane) {
+      return;
+    }
+
+    if (previous && !canShowDetailPane && selectedTopic.hasSelection) {
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) {
+        return;
+      }
+
+      final topicId = selectedTopic.topicId;
+      if (topicId == null) return;
+
+      _isAutoSwitching = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final navigator = Navigator.of(context);
+        ref.read(selectedTopicProvider.notifier).clear();
+        navigator
+            .push(
+          MaterialPageRoute(
+            builder: (_) => TopicDetailPage(
+              topicId: topicId,
+              initialTitle: selectedTopic.initialTitle,
+              scrollToPostNumber: selectedTopic.scrollToPostNumber,
+            ),
+          ),
+        )
+            .whenComplete(() {
+          if (mounted) {
+            setState(() => _isAutoSwitching = false);
+          }
+        });
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final selectedTopic = ref.watch(selectedTopicProvider);
-    final isMobile = Responsive.isMobile(context);
+    final canShowDetailPane = MasterDetailLayout.canShowBothPanesFor(context);
     final user = ref.watch(currentUserProvider).value;
+
+    _maybePushDetail(selectedTopic, canShowDetailPane);
 
     // 统一使用 MasterDetailLayout 处理所有情况
     // 手机/平板单栏：只显示 master
     // 平板双栏：显示 master + detail
     return MasterDetailLayout(
       master: const TopicsPage(),
-      detail: selectedTopic.hasSelection && !isMobile
+      detail: selectedTopic.hasSelection && canShowDetailPane
           ? TopicDetailPane(
               key: ValueKey(selectedTopic.topicId),
               topicId: selectedTopic.topicId!,

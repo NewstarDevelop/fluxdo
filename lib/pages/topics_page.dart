@@ -17,6 +17,7 @@ import '../widgets/topic/topic_filter_sheet.dart';
 import '../widgets/topic/topic_list_skeleton.dart';
 import '../providers/app_state_refresher.dart';
 import '../utils/responsive.dart';
+import '../widgets/layout/master_detail_layout.dart';
 
 class ScrollToTopNotifier extends StateNotifier<int> {
   ScrollToTopNotifier() : super(0);
@@ -365,8 +366,10 @@ class _TopicListState extends ConsumerState<_TopicList> with AutomaticKeepAliveC
   }
 
   void _openTopic(Topic topic) {
-    // 平板/桌面：使用 Master-Detail 模式
-    if (!Responsive.isMobile(context)) {
+    final canShowDetailPane = MasterDetailLayout.canShowBothPanesFor(context);
+
+    // 双栏可用：使用 Master-Detail 模式
+    if (canShowDetailPane) {
       ref.read(selectedTopicProvider.notifier).select(
         topicId: topic.id,
         initialTitle: topic.title,
@@ -375,7 +378,7 @@ class _TopicListState extends ConsumerState<_TopicList> with AutomaticKeepAliveC
       return;
     }
 
-    // 手机：跳转页面
+    // 单栏：跳转页面
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TopicDetailPage(
