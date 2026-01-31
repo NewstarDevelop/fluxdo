@@ -19,9 +19,14 @@ class DraggableFloatingPill extends StatefulWidget {
 }
 
 class _DraggableFloatingPillState extends State<DraggableFloatingPill>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _animation;
+  
+  // 呼吸动画控制器
+  late AnimationController _breathingController;
+  late Animation<double> _breathingAnimation;
+
   Offset _offset = Offset.zero;
   bool _isDragging = false;
   late Size _screenSize;
@@ -58,6 +63,16 @@ class _DraggableFloatingPillState extends State<DraggableFloatingPill>
         });
       }
     });
+
+    // 初始化呼吸动画
+    _breathingController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    
+    _breathingAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _breathingController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -73,6 +88,7 @@ class _DraggableFloatingPillState extends State<DraggableFloatingPill>
         );
         // 立即执行一次吸附
         WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
           // 此时已有 RenderObject，可以获取真实尺寸
           // 直接计算目标位置并设置，不执行动画
           final target = _calculateTargetPosition(Offset.zero);
@@ -88,6 +104,7 @@ class _DraggableFloatingPillState extends State<DraggableFloatingPill>
   @override
   void dispose() {
     _controller.dispose();
+    _breathingController.dispose();
     super.dispose();
   }
 
@@ -226,6 +243,14 @@ class _DraggableFloatingPillState extends State<DraggableFloatingPill>
           )
         : basePadding;
 
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    // 使用 Material 3 的 InverseSurface (反色)
+    // 浅色模式 => 深灰/黑背景，白字 (类似 Toast/灵动岛)
+    // 深色模式 => 浅灰/白背景，黑字 (高对比度)
+    final backgroundColor = colorScheme.inverseSurface;
+    final contentColor = colorScheme.onInverseSurface;
+
     // 使用 Opacity 控制初始可见性
     return Positioned(
       left: left,
@@ -238,64 +263,91 @@ class _DraggableFloatingPillState extends State<DraggableFloatingPill>
           onPanUpdate: _onPanUpdate,
           onPanEnd: _onPanEnd,
           onTap: _handleTap,
-          child: Material(
-            color: Colors.transparent,
-            elevation: _isDragging ? 8 : 4,
-            shadowColor: Colors.black26,
-            borderRadius: borderRadius,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              decoration: BoxDecoration(
-                 color: Theme.of(context).colorScheme.primaryContainer,
-                 borderRadius: borderRadius,
-                 border: Border.all(
-                   color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                   width: 1,
-                 )
-              ),
-              padding: targetPadding,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 图标始终显示
-                  Icon(
-                    _isExpanded ? Icons.security : Icons.security_outlined,
-                    size: 20, 
-                    color: Theme.of(context).colorScheme.onPrimaryContainer
-                  ),
-                  // 文字内容 (可折叠)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 200),
-                    child: SizedBox(
-                      width: _isExpanded ? null : 0,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        // 使用 SingleChildScrollView 防止溢出
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                            child: DefaultTextStyle(
-                              style: Theme.of(context).textTheme.labelLarge!.copyWith(
-                                color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              child: widget.child,
+          child: AnimatedBuilder(
+            animation: _breathingAnimation,
+            builder: (context, child) {
+              return Container(
+                decoration: BoxDecoration(
+                   borderRadius: borderRadius,
+                   boxShadow: [
+                     // 1. 基础阴影 (提供立体感)
+                     BoxShadow(
+                       color: Colors.black.withOpacity(0.2), 
+                       blurRadius: 6, 
+                       spreadRadius: 1,
+                       offset: const Offset(0, 2),
+                     ),
+                     // 2. 呼吸光晕 (使用 Primary 色，提供状态指示)
+                     // 即使 Pill 是黑/白的，背后的光晕依然可以是彩色的
+                     BoxShadow(
+                       color: colorScheme.primary.withOpacity(0.1 + 0.3 * _breathingAnimation.value), 
+                       blurRadius: 12 + 8 * _breathingAnimation.value, 
+                       spreadRadius: 2 + 4 * _breathingAnimation.value,
+                     ),
+                   ]
+                ),
+                child: child,
+              );
+            },
+            child: Material(
+              color: Colors.transparent,
+              elevation: 0, 
+              borderRadius: borderRadius,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                decoration: BoxDecoration(
+                   color: backgroundColor.withOpacity(0.9), // 轻微透光
+                   borderRadius: borderRadius,
+                   // 边框非常淡，仅作分割
+                   border: Border.all(
+                     color: colorScheme.outline.withOpacity(0.1),
+                     width: 1.0,
+                   ),
+                ),
+                padding: targetPadding,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 图标始终显示
+                    Icon(
+                      _isExpanded ? Icons.gpp_maybe : Icons.gpp_maybe_outlined,
+                      size: 20, 
+                      color: contentColor,
+                    ),
+                    // 文字内容 (可折叠)
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      child: SizedBox(
+                        width: _isExpanded ? null : 0,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          // 使用 SingleChildScrollView 防止溢出
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                                child: DefaultTextStyle(
+                                  style: Theme.of(context).textTheme.labelLarge!.copyWith(
+                                    color: contentColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  child: widget.child,
+                                ),
                             ),
                         ),
                       ),
                     ),
-                  ),
-                  // 展开时显示的箭头
-                  if (_isExpanded)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: Icon(
-                        Icons.chevron_right,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.5),
+                    // 展开时显示的箭头
+                    if (_isExpanded)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: contentColor.withOpacity(0.7),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

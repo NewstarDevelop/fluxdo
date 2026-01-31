@@ -831,7 +831,10 @@ class DiscourseService {
       final response = await _dio.post(
         '/topics/timings',
         data: data,
-        options: Options(contentType: Headers.formUrlEncodedContentType),
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          extra: {'isSilent': true},
+        ),
       );
       return response.statusCode;
     } on DioException catch (e) {

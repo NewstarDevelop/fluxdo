@@ -48,7 +48,12 @@ class CfChallengeInterceptor extends Interceptor {
         throw CfChallengeException(inCooldown: true);
       }
 
-      final result = await cfService.showManualVerify();
+      // 检查请求是否标记为静默（后台验证）
+      final isSilent = err.requestOptions.extra['isSilent'] == true;
+      // 默认为前台强制验证，除非明确标记为静默
+      final forceForeground = !isSilent;
+      
+      final result = await cfService.showManualVerify(null, forceForeground);
 
       if (result == true) {
         // CF 验证成功后从 WebView 同步 Cookie 回 CookieJar

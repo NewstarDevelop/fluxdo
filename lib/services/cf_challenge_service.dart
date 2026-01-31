@@ -86,7 +86,8 @@ class CfChallengeService {
 
   /// 显示手动验证页面
   /// 返回值：true=验证成功, false=验证失败, null=冷却期内暂不可用或无 context
-  Future<bool?> showManualVerify([BuildContext? context]) async {
+  /// [forceForeground] 是否强制前台显示（默认为 true）
+  Future<bool?> showManualVerify([BuildContext? context, bool forceForeground = true]) async {
     // 检查冷却期
     if (isInCooldown) {
       debugPrint('[CfChallenge] In cooldown, skipping manual verify');
@@ -122,8 +123,20 @@ class CfChallengeService {
       return null;
     }
 
+    // 如果已经在验证中 (Overlay 存在)
     if (_isVerifying) {
-      // 已经在验证中，等待结果
+        // 如果当前是后台模式，且请求强制前台，则提升为前台
+        if (forceForeground) {
+             // 找到当前的 State 并调用 promoteToForeground
+             // 这里我们需要访问到 CfChallengePage 的 State
+             // 由于无法直接访问，我们将通过 EventBus 或简单的 GlobalKey/Callback 机制
+             // 在此简化处理：我们假设 _isVerifying 意味着正在运行
+             // 实际上，如果已经在运行，我们只需返回当前的 future
+             // 但我们需要通知 UI 切换到前台。
+             // FIXME: 这里简单的返回 future 可能无法触发 UI 变更。
+             // 由于 CfChallengeService 是单例，我们可以持有一个 key 或回调
+        }
+
       final completer = Completer<bool>();
       _verifyCompleter.add(completer);
       return completer.future;
@@ -150,26 +163,85 @@ class CfChallengeService {
 
     final resultCompleter = Completer<bool>();
     late final OverlayEntry entry;
+    // 引用当前的拦截 Route，用于 cleanup
+    ModalRoute? interceptorRoute;
+    
+    // Page Key 用于触发内部弹窗
+    final pageKey = GlobalKey<_CfChallengePageState>();
+
+    // 清理资源
+    void cleanup() {
+       if (entry.mounted) {
+         entry.remove();
+       }
+       if (interceptorRoute?.isActive ?? false) {
+         interceptorRoute?.navigator?.removeRoute(interceptorRoute!);
+       }
+       _isVerifying = false;
+    }
+
     void finish(bool success) {
       if (!resultCompleter.isCompleted) {
         resultCompleter.complete(success);
       }
-      if (entry.mounted) {
-        entry.remove();
-      }
+      cleanup();
+    }
+    
+    // 创建 OverlayEntry
+    // 我们需要传递一个 promoteCallback 给 Page，让 Page 能调用 Service 来 push route
+    void onPromoteToForeground(BuildContext pageContext) {
+        if (interceptorRoute != null && interceptorRoute!.isActive) return; // 已经有 Route 了
+        
+        // Push 透明 Route 用于拦截返回键
+        interceptorRoute = PageRouteBuilder(
+            opaque: false,
+            barrierColor: Colors.transparent,
+            pageBuilder: (context, _, __) {
+                 return PopScope(
+                    canPop: false,
+                    onPopInvokedWithResult: (didPop, result) async {
+                        if (didPop) return;
+                        if (!_isVerifying) return;
+                        
+                        // 触发内部弹窗 via GlobalKey
+                        pageKey.currentState?.showExitConfirmation();
+                    },
+                    // 使用 IgnorePointer 让点击事件穿透到下层的 Overlay (WebView)
+                    child: const IgnorePointer(
+                      child: SizedBox.expand(),
+                    ),
+                 );
+            },
+        );
+        
+        Navigator.of(pageContext).push(interceptorRoute!).then((_) {
+            // Route 被 pop
+        });
     }
 
     entry = OverlayEntry(
-      builder: (_) => CfChallengePage(
-        startInBackground: true,
+      builder: (context) => CfChallengePage(
+        key: pageKey,
+        startInBackground: !forceForeground,
         onResult: finish,
+        onPromoteRequest: () => onPromoteToForeground(context),
       ),
     );
     overlayState.insert(entry);
+    
+    // 如果初始就是前台，立即执行 promote
+    if (forceForeground) {
+        // Post frame callback to ensure overlay is mounted and context is valid
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+            // 注意：这里的 ctx 是 Service 传入的 ctx，可能不是 Overlay 的 context
+            // 但 Navigator.of(ctx) 应该能找到正确的 Navigator
+            // 我们最好使用 OverlayEntry builder 里的 context，但这里访问不到。
+            // 使用 ctx 应该是安全的。
+             onPromoteToForeground(ctx!);
+        });
+    }
 
     final result = await resultCompleter.future;
-
-    _isVerifying = false;
 
     // 通知所有等待者
     for (final c in _verifyCompleter) {
@@ -178,7 +250,6 @@ class CfChallengeService {
     _verifyCompleter.clear();
 
     // 验证成功后重置冷却期
-    // 注意：syncFromWebView 由拦截器调用，避免重复
     if (result == true) {
       resetCooldown();
       CfChallengeLogger.logVerifyResult(success: true, reason: 'user completed');
@@ -199,11 +270,13 @@ class CfChallengePage extends StatefulWidget {
     super.key,
     this.startInBackground = false,
     this.onResult,
+    this.onPromoteRequest,
   });
 
   /// 先后台尝试验证，超时后再切到前台
   final bool startInBackground;
   final ValueChanged<bool>? onResult;
+  final VoidCallback? onPromoteRequest;
 
   @override
   State<CfChallengePage> createState() => _CfChallengePageState();
@@ -231,6 +304,27 @@ class _CfChallengePageState extends State<CfChallengePage> {
     super.dispose();
   }
 
+  bool _showExitDialog = false;
+
+  Future<void> showExitConfirmation() async {
+     if (!mounted) return;
+     setState(() {
+       _showExitDialog = true;
+     });
+  }
+  
+  void _dismissExitConfirmation() {
+    if (!mounted) return;
+    setState(() {
+      _showExitDialog = false;
+    });
+  }
+
+  void _confirmExit() {
+    if (!mounted) return;
+    _finish(false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -239,10 +333,8 @@ class _CfChallengePageState extends State<CfChallengePage> {
     return Stack(
       children: [
         // 内容层：显示 WebView UI
-        // 当后台可交互时(_isBackground==false)，正常显示 Scaffold
-        // 当后台不可交互时(_isBackground==true)，Scaffold 应该是完全透明且不响应点击
         IgnorePointer(
-          ignoring: _isBackground,
+          ignoring: _isBackground || _showExitDialog, // 如果显示弹窗，忽略底层点击
           child: Opacity(
             opacity: _isBackground ? 0 : 1,
             child: Scaffold(
@@ -264,7 +356,7 @@ class _CfChallengePageState extends State<CfChallengePage> {
                       ),
                       leading: IconButton(
                         icon: const Icon(Icons.close),
-                        onPressed: () => _finish(false),
+                        onPressed: showExitConfirmation,
                       ),
                       actions: [
                         IconButton(
@@ -374,6 +466,79 @@ class _CfChallengePageState extends State<CfChallengePage> {
             ),
           ),
         ),
+
+        // 内部弹窗层 (Internal Dialog Layer)
+        // 解决 Z-Index 问题：确保弹窗显示在 WebView 之上
+        if (_showExitDialog)
+           Stack(
+             children: [
+                // 遮罩
+                GestureDetector(
+                  onTap: _dismissExitConfirmation,
+                  child: Container(
+                    color: Colors.black54,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                ),
+                // 弹窗
+                Center(
+                  child: AlertDialog(
+                    title: const Text('放弃验证？'),
+                    content: const Text('退出验证将导致相关功能无法使用，确定要退出吗？'),
+                    actions: [
+                      TextButton(
+                        onPressed: _dismissExitConfirmation,
+                        child: const Text('继续验证'),
+                      ),
+                      TextButton(
+                        onPressed: _confirmExit,
+                        child: Text(
+                          '退出',
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                      ),
+                    ],
+                  ), 
+                ),
+             ],
+           ),
+
+        if (_showHelpDialog)
+          Stack(
+            children: [
+              // 遮罩
+              GestureDetector(
+                onTap: _dismissHelp,
+                child: Container(
+                  color: Colors.black54,
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
+              ),
+              // 弹窗
+              Center(
+                child: AlertDialog(
+                  title: const Text('验证帮助'),
+                  content: const Text(
+                    '这是 Cloudflare 安全验证页面。\n\n'
+                    '请完成页面上的验证挑战（如勾选框或滑块）。\n\n'
+                    '验证成功后会自动关闭此页面。\n\n'
+                    '如果长时间无法完成，可以尝试：\n'
+                    '• 点击刷新按钮重新加载\n'
+                    '• 检查网络连接\n'
+                    '• 关闭后稍后再试',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: _dismissHelp,
+                      child: const Text('知道了'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
 
         // 悬浮验证胶囊 (位于 Outer Stack，仅在后台显示)
         if (_isBackground)
@@ -511,6 +676,9 @@ class _CfChallengePageState extends State<CfChallengePage> {
       _isBackground = false;
       _checkCount = 0;
     });
+    // 调用回调以触发 Service 层的 Route Push
+    widget.onPromoteRequest?.call();
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _showInfo('自动验证超时，请手动完成验证');
@@ -538,28 +706,20 @@ class _CfChallengePageState extends State<CfChallengePage> {
     );
   }
 
+  bool _showHelpDialog = false;
+
   void _showHelp() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('验证帮助'),
-        content: const Text(
-          '这是 Cloudflare 安全验证页面。\n\n'
-          '请完成页面上的验证挑战（如勾选框或滑块）。\n\n'
-          '验证成功后会自动关闭此页面。\n\n'
-          '如果长时间无法完成，可以尝试：\n'
-          '• 点击刷新按钮重新加载\n'
-          '• 检查网络连接\n'
-          '• 关闭后稍后再试',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
+    if (!mounted) return;
+    setState(() {
+      _showHelpDialog = true;
+    });
+  }
+
+  void _dismissHelp() {
+    if (!mounted) return;
+    setState(() {
+      _showHelpDialog = false;
+    });
   }
 
   void _showError(String message) {

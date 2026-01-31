@@ -10,6 +10,7 @@ import '../services/network_logger.dart';
 import '../services/cf_challenge_logger.dart';
 import '../services/network/doh/doh_resolver.dart';
 import '../services/network/doh/network_settings_service.dart';
+import '../services/cf_challenge_service.dart';
 import 'network_adapter_settings_page.dart';
 
 class NetworkSettingsPage extends StatefulWidget {
@@ -172,6 +173,14 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> {
                 );
               },
             ),
+          Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.2)),
+          ListTile(
+            leading: const Icon(Icons.security),
+            title: const Text('Cloudflare 验证'),
+            subtitle: const Text('手动触发过盾验证'),
+            trailing: const Icon(Icons.chevron_right, size: 20),
+            onTap: _showManualVerify,
+          ),
         ],
       ),
     );
@@ -607,6 +616,33 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> {
 
     if (mounted) {
       setState(() => _testingAll = false);
+    }
+  }
+
+  Future<void> _showManualVerify() async {
+    // 强制前台模式
+    final result = await CfChallengeService().showManualVerify(context, true);
+    if (!mounted) return;
+
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('验证成功')),
+      );
+    } else if (result == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('验证未通过'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } else {
+       // null 表示在冷却中或无 context
+       // Service 内部已经有日志，这里可以提示冷却中
+       if (CfChallengeService().isInCooldown) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('验证太频繁，请稍后再试')),
+          );
+       }
     }
   }
 
