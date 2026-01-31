@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/update_service.dart';
+import '../services/cf_challenge_logger.dart';
 import '../widgets/update_dialog.dart';
 
 class AboutPage extends StatefulWidget {
@@ -17,11 +18,13 @@ class _AboutPageState extends State<AboutPage> {
   String _version = '0.1.0';
   int _versionTapCount = 0;
   DateTime? _lastVersionTapTime;
+  bool _developerMode = false;
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
+    _loadDeveloperMode();
   }
 
   void _onVersionTap() {
@@ -43,16 +46,29 @@ class _AboutPageState extends State<AboutPage> {
     final prefs = await SharedPreferences.getInstance();
     final alreadyEnabled = prefs.getBool('developer_mode') ?? false;
     if (alreadyEnabled) {
+      setState(() => _developerMode = true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('开发者模式已启用')),
       );
       return;
     }
-    await prefs.setBool('developer_mode', true);
+    await _setDeveloperMode(true);
+  }
+
+  Future<void> _setDeveloperMode(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('developer_mode', enabled);
+    if (!enabled) {
+      await CfChallengeLogger.clear();
+    }
+    await CfChallengeLogger.setEnabled(enabled);
+    if (mounted) {
+      setState(() => _developerMode = enabled);
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已启用开发者模式')),
+      SnackBar(content: Text(enabled ? '已启用开发者模式' : '已关闭开发者模式')),
     );
   }
 
@@ -61,6 +77,14 @@ class _AboutPageState extends State<AboutPage> {
     setState(() {
       _version = version;
     });
+  }
+
+  Future<void> _loadDeveloperMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('developer_mode') ?? false;
+    if (mounted) {
+      setState(() => _developerMode = enabled);
+    }
   }
 
   Future<void> _checkForUpdate() async {
@@ -214,6 +238,17 @@ class _AboutPageState extends State<AboutPage> {
           const Divider(height: 32, indent: 16, endIndent: 16),
           
           _buildSectionTitle(context, '开发'),
+          if (_developerMode)
+            SwitchListTile(
+              title: const Text('开发者模式'),
+              subtitle: const Text('点击关闭开发者模式'),
+              value: true,
+              onChanged: (value) {
+                if (!value) {
+                  _setDeveloperMode(false);
+                }
+              },
+            ),
           _buildListTile(
             context,
             icon: Icons.code,

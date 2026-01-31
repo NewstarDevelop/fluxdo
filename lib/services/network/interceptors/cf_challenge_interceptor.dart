@@ -44,6 +44,7 @@ class CfChallengeInterceptor extends Interceptor {
       if (cfService.isInCooldown) {
         debugPrint('[Dio] CF Challenge in cooldown, throwing exception');
         CfChallengeLogger.log('[INTERCEPTOR] Skipped: in cooldown');
+        CfChallengeService.showGlobalMessage('安全验证失败，已进入冷却期，请稍后再试');
         throw CfChallengeException(inCooldown: true);
       }
 
@@ -59,6 +60,7 @@ class CfChallengeInterceptor extends Interceptor {
           debugPrint('[Dio] cf_clearance not found after sync, entering cooldown');
           CfChallengeLogger.log('[INTERCEPTOR] cf_clearance not found after sync');
           cfService.startCooldown();
+          CfChallengeService.showGlobalMessage('验证未生效，请稍后重试');
           throw CfChallengeException();
         }
         CfChallengeLogger.log('[INTERCEPTOR] cf_clearance verified: ${cfClearance.length} chars');
@@ -89,21 +91,25 @@ class CfChallengeInterceptor extends Interceptor {
           );
           // 重试仍然失败，说明验证可能没有真正成功，进入冷却期
           cfService.startCooldown();
+          CfChallengeService.showGlobalMessage('验证后请求失败，请稍后重试');
           throw CfChallengeException();
         }
       } else if (result == null) {
         // null 可能是冷却期内，也可能是无 context
         if (cfService.isInCooldown) {
+          CfChallengeService.showGlobalMessage('安全验证失败，已进入冷却期，请稍后再试');
           throw CfChallengeException(inCooldown: true);
         }
         // 无 context（应用刚启动，context 还没设置好）
         debugPrint(
             '[Dio] CF Challenge: no context available, cannot show verify page');
         CfChallengeLogger.log('[INTERCEPTOR] No context available');
+        CfChallengeService.showGlobalMessage('无法打开验证页面，请稍后重试');
         throw CfChallengeException(); // 通用错误，提示重试
       } else {
         // result == false：用户取消或验证失败
         CfChallengeLogger.log('[INTERCEPTOR] User cancelled or verify failed');
+        CfChallengeService.showGlobalMessage('验证未完成，请重试');
         throw CfChallengeException(userCancelled: true);
       }
     }

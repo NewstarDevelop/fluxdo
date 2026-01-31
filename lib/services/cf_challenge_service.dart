@@ -17,10 +17,13 @@ class CfChallengeService {
   bool _isVerifying = false;
   final _verifyCompleter = <Completer<bool>>[];
   BuildContext? _context;
+  static DateTime? _lastToastAt;
+  Completer<BuildContext>? _contextReadyCompleter;
   
   /// 冷却机制：验证失败后进入冷却期
   DateTime? _cooldownUntil;
   static const _cooldownDuration = Duration(seconds: 30);
+  static const _toastCooldown = Duration(seconds: 2);
   
   /// 检查是否在冷却期
   bool get isInCooldown {
@@ -44,8 +47,32 @@ class CfChallengeService {
     CfChallengeLogger.logCooldown(entering: true, until: _cooldownUntil);
   }
 
+  static void showGlobalMessage(String message, {bool isError = true}) {
+    final context = navigatorKey.currentState?.context;
+    if (context == null || !context.mounted) return;
+    final now = DateTime.now();
+    if (_lastToastAt != null && now.difference(_lastToastAt!) < _toastCooldown) {
+      return;
+    }
+    _lastToastAt = now;
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? theme.colorScheme.error : null,
+      ),
+    );
+  }
+
   void setContext(BuildContext context) {
     _context = context;
+    if (context.mounted) {
+      _contextReadyCompleter ??= Completer<BuildContext>();
+      if (!_contextReadyCompleter!.isCompleted) {
+        _contextReadyCompleter!.complete(context);
+      }
+    }
   }
 
   /// 检测是否是 CF 验证页面
@@ -73,7 +100,7 @@ class CfChallengeService {
     
     // 尝试获取 context：传入的 > 已设置的 > 全局 navigatorKey
     BuildContext? ctx = context ?? _context;
-    if (ctx == null) {
+    if (ctx == null || !ctx.mounted) {
       // 使用全局 navigatorKey 作为备用
       final navState = navigatorKey.currentState;
       if (navState != null && navState.context.mounted) {
@@ -81,7 +108,14 @@ class CfChallengeService {
         debugPrint('[CfChallenge] Using global navigatorKey context');
       }
     }
-    
+
+    // 启动时可能还没有可用的 context，等到 context 可用后立即弹出
+    if (ctx == null || !ctx.mounted) {
+      _contextReadyCompleter ??= Completer<BuildContext>();
+      debugPrint('[CfChallenge] Waiting for context to be ready...');
+      ctx = await _contextReadyCompleter!.future;
+    }
+
     if (ctx == null) {
       debugPrint('[CfChallenge] No context available for manual verify (context not set and navigatorKey not ready)');
       // 返回 null 而不是 false，让调用方知道这是"无法验证"而非"验证失败"
@@ -97,7 +131,7 @@ class CfChallengeService {
 
     _isVerifying = true;
 
-    final overlayState = Overlay.maybeOf(ctx, rootOverlay: true);
+    final overlayState = Overlay.maybeOf(ctx, rootOverlay: true) ?? navigatorKey.currentState?.overlay;
     if (overlayState == null) {
       debugPrint('[CfChallenge] No overlay available for manual verify');
       CfChallengeLogger.log('[VERIFY] No overlay available');

@@ -70,19 +70,21 @@ class CookieJarService {
       debugPrint('[CookieJar] Got ${webViewCookies.length} cookies from WebView for ${AppConstants.baseUrl}');
 
       // 记录到 CF 日志
-      final cookieEntries = webViewCookies.map((wc) => CookieLogEntry(
-        name: wc.name,
-        domain: wc.domain,
-        path: wc.path,
-        expires: wc.expiresDate != null
-            ? DateTime.fromMillisecondsSinceEpoch(wc.expiresDate!.toInt())
-            : null,
-        valueLength: wc.value.length,
-      )).toList();
-      CfChallengeLogger.logCookieSync(
-        direction: 'WebView -> CookieJar',
-        cookies: cookieEntries,
-      );
+      if (CfChallengeLogger.isEnabled) {
+        final cookieEntries = webViewCookies.map((wc) => CookieLogEntry(
+          name: wc.name,
+          domain: wc.domain,
+          path: wc.path,
+          expires: wc.expiresDate != null
+              ? DateTime.fromMillisecondsSinceEpoch(wc.expiresDate!.toInt())
+              : null,
+          valueLength: wc.value.length,
+        )).toList();
+        CfChallengeLogger.logCookieSync(
+          direction: 'WebView -> CookieJar',
+          cookies: cookieEntries,
+        );
+      }
 
       if (webViewCookies.isEmpty) {
         debugPrint('[CookieJar] No cookies from WebView after filtering');
@@ -163,25 +165,29 @@ class CookieJarService {
 
       if (cookies.isEmpty) {
         debugPrint('[CookieJar] No cookies to sync to WebView');
-        CfChallengeLogger.logCookieSync(
-          direction: 'CookieJar -> WebView',
-          cookies: [],
-        );
+        if (CfChallengeLogger.isEnabled) {
+          CfChallengeLogger.logCookieSync(
+            direction: 'CookieJar -> WebView',
+            cookies: [],
+          );
+        }
         return;
       }
 
       // 记录到 CF 日志
-      final cookieEntries = cookies.map((c) => CookieLogEntry(
-        name: c.name,
-        domain: c.domain,
-        path: c.path,
-        expires: c.expires,
-        valueLength: c.value.length,
-      )).toList();
-      CfChallengeLogger.logCookieSync(
-        direction: 'CookieJar -> WebView',
-        cookies: cookieEntries,
-      );
+      if (CfChallengeLogger.isEnabled) {
+        final cookieEntries = cookies.map((c) => CookieLogEntry(
+          name: c.name,
+          domain: c.domain,
+          path: c.path,
+          expires: c.expires,
+          valueLength: c.value.length,
+        )).toList();
+        CfChallengeLogger.logCookieSync(
+          direction: 'CookieJar -> WebView',
+          cookies: cookieEntries,
+        );
+      }
 
       for (final cookie in cookies) {
         await _webViewCookieManager.setCookie(

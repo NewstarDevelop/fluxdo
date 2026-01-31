@@ -10,6 +10,10 @@ class CfChallengeLogger {
   static CfChallengeLogger? _instance;
   static File? _logFile;
   static bool _initialized = false;
+  static bool _enabled = false;
+  static const int _maxLogBytes = 1024 * 1024;
+  static const Duration _ipLogCooldown = Duration(minutes: 2);
+  static final Map<String, DateTime> _lastIpLogAt = {};
 
   factory CfChallengeLogger() {
     _instance ??= CfChallengeLogger._();
@@ -18,8 +22,7 @@ class CfChallengeLogger {
 
   CfChallengeLogger._();
 
-  /// 初始化日志文件
-  static Future<void> init() async {
+  static Future<void> _ensureInitialized() async {
     if (_initialized) return;
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -28,30 +31,69 @@ class CfChallengeLogger {
         await logDir.create(recursive: true);
       }
       _logFile = File('${logDir.path}/cf_challenge.log');
-      // 清空旧日志（避免日志文件过大）
       if (await _logFile!.exists()) {
         final stat = await _logFile!.stat();
-        // 如果日志文件超过 1MB，清空
-        if (stat.size > 1024 * 1024) {
+        if (stat.size > _maxLogBytes) {
           await _logFile!.writeAsString('');
         }
       }
       _initialized = true;
-      await log('=== CF Challenge Log Started ===');
     } catch (e) {
       // 忽略初始化错误
     }
   }
 
-  /// 写入日志
-  static Future<void> log(String message) async {
-    if (!_initialized || _logFile == null) return;
+  static Future<void> _appendLine(String line) async {
+    if (_logFile == null) return;
     try {
-      final timestamp = DateTime.now().toIso8601String();
+      if (await _logFile!.exists()) {
+        final size = await _logFile!.length();
+        if (size > _maxLogBytes) {
+          await _logFile!.writeAsString('');
+        }
+      }
       await _logFile!.writeAsString(
-        '[$timestamp] $message\n',
+        '$line\n',
         mode: FileMode.append,
       );
+    } catch (e) {
+      // 忽略写入错误
+    }
+  }
+
+  /// 初始化日志文件
+  static Future<void> init() async {
+    await setEnabled(true);
+  }
+
+  /// 设置启用状态
+  static Future<void> setEnabled(bool enabled) async {
+    if (_enabled == enabled) {
+      if (enabled && !_initialized) {
+        await _ensureInitialized();
+        await log('=== CF Challenge Log Started ===');
+      }
+      return;
+    }
+    _enabled = enabled;
+    if (_enabled) {
+      await _ensureInitialized();
+      await log('=== CF Challenge Log Started ===');
+    }
+  }
+
+  static bool get isEnabled => _enabled;
+
+  /// 写入日志
+  static Future<void> log(String message) async {
+    if (!_enabled) return;
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
+    if (_logFile == null) return;
+    try {
+      final timestamp = DateTime.now().toIso8601String();
+      await _appendLine('[$timestamp] $message');
     } catch (e) {
       // 忽略写入错误
     }
@@ -62,10 +104,19 @@ class CfChallengeLogger {
     required String direction,
     required List<CookieLogEntry> cookies,
   }) async {
-    await log('[COOKIE] $direction - ${cookies.length} cookies');
-    for (final cookie in cookies) {
-      await log('  - ${cookie.name}: domain=${cookie.domain}, path=${cookie.path}, expires=${cookie.expires}, valueLen=${cookie.valueLength}');
+    if (!_enabled) return;
+    if (!_initialized) {
+      await _ensureInitialized();
     }
+    if (_logFile == null) return;
+    final timestamp = DateTime.now().toIso8601String();
+    final buffer = StringBuffer();
+    buffer.write('[$timestamp] [COOKIE] $direction - ${cookies.length} cookies');
+    for (final cookie in cookies) {
+      buffer.write(
+          '\n[$timestamp]   - ${cookie.name}: domain=${cookie.domain}, path=${cookie.path}, expires=${cookie.expires}, valueLen=${cookie.valueLength}');
+    }
+    await _appendLine(buffer.toString());
   }
 
   /// 记录验证开始
@@ -78,6 +129,7 @@ class CfChallengeLogger {
     required String url,
     String? context,
   }) async {
+    if (!_enabled) return;
     final uri = Uri.tryParse(url);
     if (uri == null || uri.host.isEmpty) {
       await log('[IP]${_formatContext(context)} host=unknown');
@@ -85,6 +137,13 @@ class CfChallengeLogger {
     }
 
     final host = uri.host;
+    final lastLog = _lastIpLogAt[host];
+    final now = DateTime.now();
+    if (lastLog != null && now.difference(lastLog) < _ipLogCooldown) {
+      return;
+    }
+    _lastIpLogAt[host] = now;
+
     final clientIp = await _fetchClientIp(uri);
     final serverIps = await _resolveServerIps(host);
     final clientText = (clientIp == null || clientIp.isEmpty) ? 'unknown' : clientIp;
@@ -151,18 +210,27 @@ class CfChallengeLogger {
 
   /// 获取日志文件路径
   static Future<String?> getLogPath() async {
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
     if (_logFile == null) return null;
     return _logFile!.path;
   }
 
   /// 读取日志内容
   static Future<String?> readLogs() async {
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
     if (_logFile == null || !await _logFile!.exists()) return null;
     return _logFile!.readAsString();
   }
 
   /// 清除日志
   static Future<void> clear() async {
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
     if (_logFile == null) return;
     try {
       if (await _logFile!.exists()) {

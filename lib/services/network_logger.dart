@@ -7,6 +7,7 @@ class NetworkLogger {
   static NetworkLogger? _instance;
   static File? _logFile;
   static bool _initialized = false;
+  static bool _enabled = false;
 
   factory NetworkLogger() {
     _instance ??= NetworkLogger._();
@@ -15,8 +16,7 @@ class NetworkLogger {
 
   NetworkLogger._();
 
-  /// 初始化日志文件
-  static Future<void> init() async {
+  static Future<void> _ensureInitialized({bool clearIfExists = false}) async {
     if (_initialized) return;
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -25,20 +25,47 @@ class NetworkLogger {
         await logDir.create(recursive: true);
       }
       _logFile = File('${logDir.path}/network_debug.log');
-      // 清空旧日志
-      if (await _logFile!.exists()) {
+      if (clearIfExists && await _logFile!.exists()) {
         await _logFile!.writeAsString('');
       }
       _initialized = true;
-      await log('=== Network Log Started ===');
     } catch (e) {
       // 忽略初始化错误
     }
   }
 
+  /// 初始化日志文件
+  static Future<void> init() async {
+    await _ensureInitialized(clearIfExists: true);
+    _enabled = true;
+    await log('=== Network Log Started ===');
+  }
+
+  /// 设置启用状态
+  static Future<void> setEnabled(bool enabled) async {
+    if (_enabled == enabled) {
+      if (enabled && !_initialized) {
+        await _ensureInitialized(clearIfExists: true);
+        await log('=== Network Log Started ===');
+      }
+      return;
+    }
+    _enabled = enabled;
+    if (_enabled) {
+      await _ensureInitialized(clearIfExists: true);
+      await log('=== Network Log Started ===');
+    }
+  }
+
+  static bool get isEnabled => _enabled;
+
   /// 写入日志
   static Future<void> log(String message) async {
-    if (!_initialized || _logFile == null) return;
+    if (!_enabled) return;
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
+    if (_logFile == null) return;
     try {
       final timestamp = DateTime.now().toIso8601String();
       await _logFile!.writeAsString(
@@ -79,18 +106,27 @@ class NetworkLogger {
 
   /// 获取日志文件路径
   static Future<String?> getLogPath() async {
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
     if (_logFile == null) return null;
     return _logFile!.path;
   }
 
   /// 读取日志内容
   static Future<String?> readLogs() async {
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
     if (_logFile == null || !await _logFile!.exists()) return null;
     return _logFile!.readAsString();
   }
 
   /// 清除日志
   static Future<void> clear() async {
+    if (!_initialized) {
+      await _ensureInitialized();
+    }
     if (_logFile == null) return;
     try {
       if (await _logFile!.exists()) {

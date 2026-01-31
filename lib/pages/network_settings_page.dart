@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -29,15 +30,24 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> {
   void initState() {
     super.initState();
     _loadDeveloperMode();
+    unawaited(NetworkLogger.setEnabled(true));
   }
 
   Future<void> _loadDeveloperMode() async {
     final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('developer_mode') ?? false;
     if (mounted) {
       setState(() {
-        _isDeveloperMode = prefs.getBool('developer_mode') ?? false;
+        _isDeveloperMode = enabled;
       });
     }
+    unawaited(CfChallengeLogger.setEnabled(enabled));
+  }
+
+  @override
+  void dispose() {
+    unawaited(NetworkLogger.setEnabled(false));
+    super.dispose();
   }
 
   @override
