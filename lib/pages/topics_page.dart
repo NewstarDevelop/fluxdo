@@ -15,7 +15,9 @@ import 'search_page.dart';
 import '../widgets/common/notification_icon_button.dart';
 import '../widgets/topic/topic_filter_sheet.dart';
 import '../widgets/topic/topic_list_skeleton.dart';
+import '../widgets/topic/topic_preview_dialog.dart';
 import '../providers/app_state_refresher.dart';
+import '../providers/preferences_provider.dart';
 import '../utils/responsive.dart';
 import '../widgets/layout/master_detail_layout.dart';
 import '../widgets/common/loading_dialog.dart';
@@ -478,16 +480,31 @@ class _TopicListState extends ConsumerState<_TopicList> with AutomaticKeepAliveC
                 } else {
                   final topic = topics[topicIndex];
                   final isSelected = topic.id == selectedTopicId;
+                  final enableLongPress = ref.watch(preferencesProvider).longPressPreview;
                   if (topic.pinned) {
                     child = CompactTopicCard(
                       topic: topic,
                       onTap: () => _openTopic(topic),
+                      onLongPress: enableLongPress
+                          ? () => TopicPreviewDialog.show(
+                                context,
+                                topic: topic,
+                                onOpen: () => _openTopic(topic),
+                              )
+                          : null,
                       isSelected: isSelected,
                     );
                   } else {
                     child = TopicCard(
                       topic: topic,
                       onTap: () => _openTopic(topic),
+                      onLongPress: enableLongPress
+                          ? () => TopicPreviewDialog.show(
+                                context,
+                                topic: topic,
+                                onOpen: () => _openTopic(topic),
+                              )
+                          : null,
                       isSelected: isSelected,
                     );
                   }
