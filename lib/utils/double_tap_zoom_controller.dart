@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:extended_image/extended_image.dart';
+import 'package:extended_image_lite/extended_image_lite.dart';
 
 /// 双击缩放控制器
 /// 

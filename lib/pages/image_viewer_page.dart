@@ -1,9 +1,10 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:extended_image/extended_image.dart';
+import 'package:extended_image_lite/extended_image_lite.dart';
 import 'package:gal/gal.dart';
 import '../services/discourse_cache_manager.dart';
 import '../utils/double_tap_zoom_controller.dart';
+import '../utils/hero_visibility_controller.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
 import '../widgets/common/loading_spinner.dart';
@@ -13,6 +14,8 @@ class ImageViewerPage extends StatefulWidget {
   final Uint8List? imageBytes;
   final String? heroTag;
   final List<String>? galleryImages;
+  /// 每张图片对应的 Hero tag 列表，用于切换图片后正确返回
+  final List<String>? heroTags;
   final int initialIndex;
   final bool enableShare;
 
@@ -22,6 +25,7 @@ class ImageViewerPage extends StatefulWidget {
     this.imageBytes,
     this.heroTag,
     this.galleryImages,
+    this.heroTags,
     this.initialIndex = 0,
     this.enableShare = false,
   }) : assert(imageUrl != null || imageBytes != null);
@@ -32,6 +36,7 @@ class ImageViewerPage extends StatefulWidget {
     String imageUrl, {
     String? heroTag,
     List<String>? galleryImages,
+    List<String>? heroTags,
     int initialIndex = 0,
     bool enableShare = false,
   }) {
@@ -45,6 +50,7 @@ class ImageViewerPage extends StatefulWidget {
             imageUrl: imageUrl,
             heroTag: heroTag,
             galleryImages: galleryImages,
+            heroTags: heroTags,
             initialIndex: initialIndex,
             enableShare: enableShare,
           );
@@ -84,19 +90,36 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   bool _isSharing = false;
   bool _showUI = true;
   final DiscourseCacheManager _cacheManager = DiscourseCacheManager();
+  /// 通知所有缓存页面当前活跃的 Hero 页码变化，确保只有当前页有 Hero
+  late final ValueNotifier<int> _activeHeroPage;
+
+  /// 获取指定索引的 hero tag
+  String? _getHeroTagForIndex(int index) {
+    if (widget.heroTags != null && index < widget.heroTags!.length) {
+      return widget.heroTags![index];
+    } else if (index == widget.initialIndex && widget.heroTag != null) {
+      return widget.heroTag;
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
     currentIndex = widget.initialIndex;
+    _activeHeroPage = ValueNotifier(currentIndex);
     // 初始化双击缩放
     initDoubleTapZoom();
     // 预加载相邻图片
     _preloadAdjacentImages();
+    // 静默设置初始隐藏的图片（不触发通知，因为此时可能正在构建）
+    HeroVisibilityController.instance.setHiddenTagSilent(_getHeroTagForIndex(currentIndex));
   }
 
   @override
   void dispose() {
+    HeroVisibilityController.instance.clear();
+    _activeHeroPage.dispose();
     _restoreSystemUI();
     disposeDoubleTapZoom();
     super.dispose();
@@ -449,54 +472,70 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                     setState(() {
                       currentIndex = index;
                     });
+                    _activeHeroPage.value = index;
+                    // 更新底层页面应该隐藏的图片
+                    HeroVisibilityController.instance.setHiddenTag(_getHeroTagForIndex(index));
                     // 预加载相邻图片
                     _preloadAdjacentImages();
                   },
                   itemBuilder: (context, index) {
                     final url = images[index];
-                    // 仅当当前显示的图片是初始进入的图片时，才使用 Hero 动画
-                    // 因为其他图片在列表中的 Hero Tag 是未知的 (UniqueKey)
-                    final shouldUseHero = index == widget.initialIndex && widget.heroTag != null;
-  
-                    return ExtendedImage(
-                      image: discourseImageProvider(url),
-                      mode: ExtendedImageMode.gesture,
-                      enableSlideOutPage: true,
-                      heroBuilderForSlidingPage: shouldUseHero
-                          ? (child) => Hero(tag: widget.heroTag!, child: child)
-                          : null,
-                      initGestureConfigHandler: (state) {
-                        return GestureConfig(
-                          minScale: 0.9,
-                          animationMinScale: 0.7,
-                          maxScale: 4.0,
-                          animationMaxScale: 4.5,
-                          speed: 1.0,
-                          inertialSpeed: 500.0,
-                          initialScale: 1.0,
-                          inPageView: true, // 必须为 true
-                          initialAlignment: InitialAlignment.center,
-                        );
-                      },
-                      onDoubleTap: (state) {
-                        _hideUI();
-                        handleDoubleTapZoom(state, imageUrl: url);
-                      },
-                      loadStateChanged: (state) {
-                        if (state.extendedImageLoadState == LoadState.loading) {
-                          return const Center(child: LoadingSpinner());
-                        }
-                        // 缓存图片尺寸用于智能缩放
-                        if (state.extendedImageLoadState == LoadState.completed) {
-                          final imageInfo = state.extendedImageInfo;
-                          if (imageInfo != null) {
-                            cacheImageSize(url, Size(
-                              imageInfo.image.width.toDouble(),
-                              imageInfo.image.height.toDouble(),
-                            ));
+
+                    // 用 ValueListenableBuilder 监听页码变化
+                    // 确保 PageView 缓存的页面在切换时也会重建，移除旧 Hero
+                    return ValueListenableBuilder<int>(
+                      valueListenable: _activeHeroPage,
+                      builder: (context, activePage, _) {
+                        String? heroTag;
+                        if (index == activePage) {
+                          if (widget.heroTags != null && index < widget.heroTags!.length) {
+                            heroTag = widget.heroTags![index];
+                          } else if (index == widget.initialIndex && widget.heroTag != null) {
+                            heroTag = widget.heroTag;
                           }
                         }
-                        return null;
+
+                        return ExtendedImage(
+                          image: discourseImageProvider(url),
+                          mode: ExtendedImageMode.gesture,
+                          enableSlideOutPage: true,
+                          heroBuilderForSlidingPage: heroTag != null
+                              ? (child) => Hero(tag: heroTag!, child: child)
+                              : null,
+                          initGestureConfigHandler: (state) {
+                            return GestureConfig(
+                              minScale: 0.9,
+                              animationMinScale: 0.7,
+                              maxScale: 4.0,
+                              animationMaxScale: 4.5,
+                              speed: 1.0,
+                              inertialSpeed: 500.0,
+                              initialScale: 1.0,
+                              inPageView: true, // 必须为 true
+                              initialAlignment: InitialAlignment.center,
+                            );
+                          },
+                          onDoubleTap: (state) {
+                            _hideUI();
+                            handleDoubleTapZoom(state, imageUrl: url);
+                          },
+                          loadStateChanged: (state) {
+                            if (state.extendedImageLoadState == LoadState.loading) {
+                              return const Center(child: LoadingSpinner());
+                            }
+                            // 缓存图片尺寸用于智能缩放
+                            if (state.extendedImageLoadState == LoadState.completed) {
+                              final imageInfo = state.extendedImageInfo;
+                              if (imageInfo != null) {
+                                cacheImageSize(url, Size(
+                                  imageInfo.image.width.toDouble(),
+                                  imageInfo.image.height.toDouble(),
+                                ));
+                              }
+                            }
+                            return null;
+                          },
+                        );
                       },
                     );
                   },

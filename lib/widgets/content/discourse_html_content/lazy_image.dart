@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../lazy_load_scope.dart';
+import '../../common/hero_image.dart';
 
 /// 懒加载图片组件
 ///
@@ -145,57 +146,58 @@ class _LazyImageState extends State<LazyImage> with SingleTickerProviderStateMix
   }
 
   Widget _buildImageWidget(ThemeData theme) {
-    Widget imageWidget = GestureDetector(
-      onTap: widget.onTap,
-      child: Hero(
-        tag: widget.heroTag,
-        child: Image(
-          image: widget.imageProvider,
-          fit: widget.fit,
-          width: widget.width,
-          height: widget.height,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
+    final imageChild = Image(
+      image: widget.imageProvider,
+      fit: widget.fit,
+      width: widget.width,
+      height: widget.height,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
 
-            // 加载中显示进度指示器
-            return Container(
-              width: widget.width,
-              height: widget.height ?? 200,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                      : null,
-                ),
-              ),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              width: widget.width,
-              height: widget.height ?? 200,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.broken_image,
-                color: theme.colorScheme.outline,
-                size: 32,
-              ),
-            );
-          },
-        ),
-      ),
+        // 加载中显示进度指示器
+        return Container(
+          width: widget.width,
+          height: widget.height ?? 200,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                  : null,
+            ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          width: widget.width,
+          height: widget.height ?? 200,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.broken_image,
+            color: theme.colorScheme.outline,
+            size: 32,
+          ),
+        );
+      },
+    );
+
+    // 使用 HeroImage 封装 Hero 动画及可见性控制
+    Widget imageWidget = HeroImage(
+      heroTag: widget.heroTag,
+      onTap: widget.onTap,
+      child: imageChild,
     );
 
     if (widget.width != null && widget.height != null && widget.height! > 0) {

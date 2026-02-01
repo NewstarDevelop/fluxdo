@@ -88,12 +88,20 @@ class DiscourseWidgetFactory extends WidgetFactory {
         ? discourseImageProvider(resolvedUrl)
         : null;
 
-    // 生成唯一 Tag
-    final String heroTag = "${resolvedUrl ?? originalUrl}_${UniqueKey().toString()}";
-
     // 检查是否在画廊列表中
     final int galleryIndex = resolvedUrl != null ? galleryImages.indexOf(resolvedUrl) : -1;
     final bool isGalleryImage = galleryIndex != -1;
+
+    // 生成唯一 Tag
+    // 画廊图片使用确定性 tag（基于画廊内容和索引），以便切换图片后 Hero 动画能正确返回
+    // 非画廊图片使用 UniqueKey 避免冲突
+    final String heroTag;
+    if (isGalleryImage) {
+      final int galleryHash = Object.hashAll(galleryImages);
+      heroTag = "gallery_${galleryHash}_$galleryIndex";
+    } else {
+      heroTag = "${resolvedUrl ?? originalUrl}_${UniqueKey().toString()}";
+    }
 
     return Builder(
       builder: (context) {
@@ -192,12 +200,19 @@ class DiscourseWidgetFactory extends WidgetFactory {
               final List<String> originalGalleryImages = galleryImages
                   .map((e) => _getOriginalUrl(e))
                   .toList();
+              // 为所有画廊图片生成确定性 hero tags
+              final int galleryHash = Object.hashAll(galleryImages);
+              final List<String> heroTags = List.generate(
+                galleryImages.length,
+                (i) => "gallery_${galleryHash}_$i",
+              );
 
               ImageViewerPage.open(
                 context,
                 originalUrl,
                 heroTag: heroTag,
                 galleryImages: originalGalleryImages,
+                heroTags: heroTags,
                 initialIndex: galleryIndex,
                 enableShare: true,
               );
