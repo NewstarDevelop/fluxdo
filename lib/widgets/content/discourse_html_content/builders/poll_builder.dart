@@ -338,8 +338,8 @@ class _PollWidgetState extends State<_PollWidget> {
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
-                // 投票/查看结果切换按钮
-                if (!isClosed && hasVoted)
+                // 投票/查看结果切换按钮 - 当 results 为 always 或者用户已投票时显示
+                if (!isClosed && (hasVoted || _poll.results == 'always'))
                   TextButton(
                     onPressed: () => setState(() => _showResults = !_showResults),
                     style: TextButton.styleFrom(
@@ -377,13 +377,12 @@ class _PollWidgetState extends State<_PollWidget> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: isUserVoted
-                  ? theme.colorScheme.primaryContainer.withValues(alpha: 0.2)
+                  ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
                   : theme.colorScheme.surface,
               border: Border.all(
                 color: isUserVoted
-                    ? theme.colorScheme.primary.withValues(alpha: 0.5)
+                    ? theme.colorScheme.primary
                     : theme.colorScheme.outline.withValues(alpha: 0.2),
-                width: isUserVoted ? 2 : 1,
               ),
               borderRadius: BorderRadius.circular(6),
             ),
@@ -434,9 +433,8 @@ class _PollWidgetState extends State<_PollWidget> {
                 : theme.colorScheme.surface,
             border: Border.all(
               color: isUserVoted
-                  ? theme.colorScheme.primary.withValues(alpha: 0.5)
+                  ? theme.colorScheme.primary
                   : theme.colorScheme.outline.withValues(alpha: 0.2),
-              width: isUserVoted ? 2 : 1,
             ),
             borderRadius: BorderRadius.circular(6),
           ),
