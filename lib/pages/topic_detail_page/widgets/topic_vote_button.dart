@@ -138,15 +138,15 @@ class _TopicVoteButtonState extends ConsumerState<TopicVoteButton> {
       color: Colors.transparent,
       child: InkWell(
         onTap: _isLoading ? null : _handleVote,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: _userVoted
                 ? theme.colorScheme.primary
                 : theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: _userVoted
                   ? theme.colorScheme.primary
@@ -182,7 +182,7 @@ class _TopicVoteButtonState extends ConsumerState<TopicVoteButton> {
               else
                 Icon(
                   _userVoted ? Icons.check_circle : Icons.arrow_upward_rounded,
-                  size: 18,
+                  size: 20,
                   color: _userVoted
                       ? theme.colorScheme.onPrimary
                       : theme.colorScheme.primary,
@@ -195,6 +195,7 @@ class _TopicVoteButtonState extends ConsumerState<TopicVoteButton> {
                       ? theme.colorScheme.onPrimary
                       : theme.colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.bold,
+                  fontSize: 14,
                 ),
               ),
               if (_voteCount > 0) ...[
@@ -211,10 +212,11 @@ class _TopicVoteButtonState extends ConsumerState<TopicVoteButton> {
                   alignment: Alignment.center,
                   child: Text(
                     '$_voteCount',
-                    style: theme.textTheme.labelSmall?.copyWith(
+                    style: theme.textTheme.labelMedium?.copyWith(
                       color: _userVoted
                           ? theme.colorScheme.onPrimary
                           : theme.colorScheme.primary,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

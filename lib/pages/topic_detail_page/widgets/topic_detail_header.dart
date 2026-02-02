@@ -178,21 +178,19 @@ class TopicDetailHeader extends ConsumerWidget {
                 topic: detail,
                 onVoteChanged: onVoteChanged,
               ),
-              const SizedBox(width: 8),
-              // 订阅按钮
-              TopicNotificationButton(
-                level: detail.notificationLevel,
-                onChanged: onNotificationLevelChanged,
-                style: TopicNotificationButtonStyle.chip,
-              ),
             ],
           ),
 
-          // AI 摘要
+          // AI 摘要 & 订阅按钮
           const SizedBox(height: 16),
           CollapsibleTopicSummary(
             topicId: detail.id,
-            topicDetail: detail,  // 传入话题详情以检查 summarizable
+            topicDetail: detail,
+            headerExtra: TopicNotificationButton(
+              level: detail.notificationLevel,
+              onChanged: onNotificationLevelChanged,
+              style: TopicNotificationButtonStyle.chip,
+            ),
           ),
         ],
       ),

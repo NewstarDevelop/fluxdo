@@ -250,11 +250,13 @@ class TopicSummaryWidget extends ConsumerWidget {
 class CollapsibleTopicSummary extends ConsumerStatefulWidget {
   final int topicId;
   final TopicDetail? topicDetail;  // 新增：传入话题详情以检查 summarizable
+  final Widget? headerExtra; // 新增：头部额外组件（如订阅按钮）
 
   const CollapsibleTopicSummary({
     super.key,
     required this.topicId,
     this.topicDetail,
+    this.headerExtra,
   });
 
   @override
@@ -291,7 +293,11 @@ class _CollapsibleTopicSummaryState
 
     // 🔑 关键控制逻辑：检查是否应该显示摘要按钮
     if (topicDetail != null && !topicDetail.summarizable) {
-      return const SizedBox.shrink();  // 不可摘要的话题，不显示
+      // 即使不可摘要，如果有 headerExtra 也要显示 headerExtra
+      if (widget.headerExtra != null) {
+         return widget.headerExtra!;
+      }
+      return const SizedBox.shrink();
     }
 
     // 只有在已请求后才 watch provider
@@ -306,71 +312,79 @@ class _CollapsibleTopicSummaryState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 摘要按钮
-        InkWell(
-          onTap: _toggleExpand,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+        Row(
+          children: [
+            // 摘要按钮
+            InkWell(
+              onTap: _toggleExpand,
               borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.auto_awesome,
-                  size: 16,
-                  color: theme.colorScheme.primary,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  hasCachedSummary ? 'AI 摘要' : '生成 AI 摘要',  // 根据缓存状态显示不同文本
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                // 旋转动画箭头
-                AnimatedRotation(
-                  turns: _isExpanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  child: Icon(
-                    Icons.expand_more,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                // 加载指示器
-                if (isLoading) ...[
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 16,
                       color: theme.colorScheme.primary,
                     ),
-                  ),
-                ],
-                // 过期提示
-                if (isOutdated) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.tertiary,
-                      shape: BoxShape.circle,
+                    const SizedBox(width: 6),
+                    Text(
+                      hasCachedSummary ? 'AI 摘要' : '生成 AI 摘要',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ],
-              ],
+                    const SizedBox(width: 4),
+                    // 旋转动画箭头
+                    AnimatedRotation(
+                      turns: _isExpanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(
+                        Icons.expand_more,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    // 加载指示器
+                    if (isLoading) ...[
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                    // 过期提示
+                    if (isOutdated) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.tertiary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          ),
+            if (widget.headerExtra != null) ...[
+              const SizedBox(width: 12),
+              widget.headerExtra!,
+            ],
+          ],
         ),
         // 展开的摘要内容，使用 SizeTransition 优化展开动画
         SizeTransition(

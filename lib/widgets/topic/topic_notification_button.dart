@@ -62,25 +62,29 @@ class TopicNotificationButton extends StatelessWidget {
     final isWatching = level == TopicNotificationLevel.watching || 
                        level == TopicNotificationLevel.tracking;
     
+    // 适配 AI 摘要按钮风格
+    final bgColor = isWatching 
+        ? theme.colorScheme.primaryContainer 
+        : theme.colorScheme.primaryContainer.withOpacity(0.3);
+    
+    final fgColor = isWatching 
+        ? theme.colorScheme.primary 
+        : theme.colorScheme.primary;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onChanged != null ? () => _showSheet(context) : null,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(8), // 统一圆角为 8
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), // 统一 Padding
           decoration: BoxDecoration(
-            color: isWatching 
-                ? theme.colorScheme.primaryContainer 
-                : theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isWatching 
-                  ? theme.colorScheme.primary 
-                  : theme.colorScheme.outlineVariant,
-              width: 1,
-            ),
+            color: bgColor,
+            borderRadius: BorderRadius.circular(8),
+            border: isWatching 
+              ? Border.all(color: theme.colorScheme.primary, width: 1)
+              : null, // 非激活状态无边框，与 AI 摘要按钮保持一致
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -88,18 +92,14 @@ class TopicNotificationButton extends StatelessWidget {
               Icon(
                 getIcon(level),
                 size: 16,
-                color: isWatching 
-                    ? theme.colorScheme.primary 
-                    : theme.colorScheme.onSurfaceVariant,
+                color: fgColor,
               ),
               const SizedBox(width: 6),
               Text(
                 level.label,
                 style: theme.textTheme.labelMedium?.copyWith(
-                  color: isWatching 
-                      ? theme.colorScheme.primary 
-                      : theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.bold,
+                  color: fgColor,
+                  fontWeight: FontWeight.w500, // 统一字重
                 ),
               ),
             ],
