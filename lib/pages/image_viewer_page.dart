@@ -410,12 +410,13 @@ class _ImageViewerPageState extends State<ImageViewerPage>
         statusBarBrightness: Brightness.dark,
       ),
       child: ExtendedImageSlidePage(
-      slideAxis: SlideAxis.both,
+      slideAxis: SlideAxis.vertical,  // 仅垂直滑动关闭，避免与左右切换图片冲突
       slideType: SlideType.onlyImage,
       // 只处理背景透明度，不干预关闭逻辑，让库自己处理 pop
       slidePageBackgroundHandler: (Offset offset, Size pageSize) {
-        double progress = offset.distance / (pageSize.height);
-        return Colors.black.withValues(alpha:(1.0 - progress).clamp(0.0, 1.0));
+        // 使用垂直偏移量计算背景透明度（与 slideAxis: vertical 匹配）
+        double progress = offset.dy.abs() / (pageSize.height / 2);
+        return Colors.black.withValues(alpha: (1.0 - progress).clamp(0.0, 1.0));
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
