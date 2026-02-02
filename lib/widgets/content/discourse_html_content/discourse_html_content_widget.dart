@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pangutext/pangutext.dart';
 import '../../../constants.dart';
 import '../../../models/topic.dart';
 import '../../../pages/user_profile_page.dart';
 import '../../../pages/webview_page.dart';
+import '../../../providers/preferences_provider.dart';
 import '../../../services/discourse_service.dart';
 import '../../../services/emoji_handler.dart';
 import '../../../utils/url_helper.dart';
@@ -23,7 +26,7 @@ import 'builders/chat_transcript_builder.dart';
 
 /// Discourse HTML 内容渲染 Widget
 /// 封装了所有自定义渲染逻辑
-class DiscourseHtmlContent extends StatefulWidget {
+class DiscourseHtmlContent extends ConsumerStatefulWidget {
   final String html;
   final TextStyle? textStyle;
   final bool compact; // 紧凑模式：移除段落边距
@@ -43,6 +46,8 @@ class DiscourseHtmlContent extends StatefulWidget {
   final Post? post;
   /// 话题 ID（用于链接点击追踪）
   final int? topicId;
+  /// 覆盖混排优化开关（null 表示使用全局设置）
+  final bool? enablePanguSpacing;
 
   const DiscourseHtmlContent({
     super.key,
@@ -57,15 +62,17 @@ class DiscourseHtmlContent extends StatefulWidget {
     this.fullHtml,
     this.post,
     this.topicId,
+    this.enablePanguSpacing,
   });
 
   @override
-  State<DiscourseHtmlContent> createState() => _DiscourseHtmlContentState();
+  ConsumerState<DiscourseHtmlContent> createState() => _DiscourseHtmlContentState();
 }
 
-class _DiscourseHtmlContentState extends State<DiscourseHtmlContent> {
+class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
   late final DiscourseWidgetFactory _widgetFactory;
   late final List<String> _galleryImages;
+  final Pangu _pangu = Pangu();
   int _rebuildKey = 0;
 
   @override
@@ -115,7 +122,7 @@ class _DiscourseHtmlContentState extends State<DiscourseHtmlContent> {
   }
 
   /// 预处理 HTML：注入用户状态 emoji、链接点击次数，修复 mention 圆角问题
-  String _preprocessHtml(String html) {
+  String _preprocessHtml(String html, bool enablePanguSpacing) {
     var processedHtml = html;
 
     // 0. 将相对路径转换为绝对路径（修复新发帖子图片不显示的问题）
@@ -181,6 +188,10 @@ class _DiscourseHtmlContentState extends State<DiscourseHtmlContent> {
       }
     }
 
+    if (enablePanguSpacing) {
+      processedHtml = _pangu.spacingText(processedHtml);
+    }
+
     return processedHtml;
   }
 
@@ -218,7 +229,9 @@ class _DiscourseHtmlContentState extends State<DiscourseHtmlContent> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final linkColor = theme.colorScheme.primary.toARGB32().toRadixString(16).substring(2);
-    final processedHtml = _preprocessHtml(widget.html);
+    final enablePanguSpacing =
+        widget.enablePanguSpacing ?? ref.watch(preferencesProvider).autoPanguSpacing;
+    final processedHtml = _preprocessHtml(widget.html, enablePanguSpacing);
 
     final htmlWidget = HtmlWidget(
       key: ValueKey(_rebuildKey),
@@ -366,6 +379,7 @@ class _DiscourseHtmlContentState extends State<DiscourseHtmlContent> {
         linkCounts: widget.linkCounts,
         mentionedUsers: widget.mentionedUsers,
         enableSelectionArea: widget.enableSelectionArea,
+        enablePanguSpacing: widget.enablePanguSpacing,
       );
     }
 
