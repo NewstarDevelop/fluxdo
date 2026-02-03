@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/topic.dart';
 import '../providers/discourse_providers.dart';
 import '../widgets/topic/topic_card.dart';
+import '../widgets/topic/topic_list_skeleton.dart';
 import 'topic_detail_page/topic_detail_page.dart';
-import '../widgets/common/loading_spinner.dart';
 
 /// 我的话题页面
 class MyTopicsPage extends ConsumerStatefulWidget {
@@ -110,7 +110,7 @@ class _MyTopicsPageState extends ConsumerState<MyTopicsPage> {
               },
             );
           },
-          loading: () => const Center(child: LoadingSpinner()),
+          loading: () => const TopicListSkeleton(),
           error: (error, stack) => Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

@@ -5,7 +5,7 @@ import '../models/badge.dart';
 import '../providers/discourse_providers.dart';
 import '../services/discourse_cache_manager.dart';
 import '../utils/url_helper.dart';
-import '../widgets/common/loading_spinner.dart';
+import '../widgets/badge/my_badges_skeleton.dart';
 import '../utils/font_awesome_map.dart';
 import '../widgets/badge/badge_ui_utils.dart';
 import 'badge_page.dart';
@@ -86,7 +86,7 @@ class _MyBadgesPageState extends ConsumerState<MyBadgesPage> {
 
     return Scaffold(
       body: _isLoading
-          ? const Center(child: LoadingSpinner())
+          ? const MyBadgesSkeleton()
           : _error != null
               ? Center(
                   child: Column(

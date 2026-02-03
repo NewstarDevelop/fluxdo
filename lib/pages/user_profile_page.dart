@@ -14,10 +14,11 @@ import '../constants.dart';
 import '../utils/share_utils.dart';
 import '../providers/preferences_provider.dart';
 import '../widgets/common/flair_badge.dart';
+import '../widgets/common/animated_gradient_background.dart';
 import '../widgets/content/discourse_html_content/discourse_html_content_widget.dart';
 import '../widgets/content/collapsed_html_content.dart';
 import '../widgets/post/reply_sheet.dart';
-import '../widgets/common/loading_spinner.dart';
+import '../widgets/user/user_profile_skeleton.dart';
 import 'topic_detail_page/topic_detail_page.dart';
 import 'search_page.dart';
 import 'follow_list_page.dart';
@@ -445,9 +446,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
     final currentUser = ref.watch(currentUserProvider).value;
 
     if (_isLoading) {
-      return Scaffold(
-        body: const Center(child: LoadingSpinner()),
-      );
+      return const UserProfileSkeleton();
     }
 
     if (_error != null) {
@@ -583,21 +582,26 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
           return Stack(
             fit: StackFit.expand,
             children: [
-              // ===== 层 0: 背景图 - 始终填满整个 flexibleSpace 区域 =====
+              // ===== 层 0: 背景 - 渐变动画打底 + 图片叠加 =====
+              const AnimatedGradientBackground(),
               if (hasBackground)
                 Image(
                   image: discourseImageProvider(
                     bgUrl.startsWith('http') ? bgUrl : '${AppConstants.baseUrl}$bgUrl',
                   ),
                   fit: BoxFit.cover,
-                  alignment: Alignment.center, // 改为居中对齐，收起时上下裁剪，视觉更稳定
-                  errorBuilder: (_, _, _) => Container(color: Colors.grey[900]),
-                )
-              else
-                Image.asset(
-                  'assets/images/default_profile_bg.png',
-                  fit: BoxFit.cover,
                   alignment: Alignment.center,
+                  frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                    if (wasSynchronouslyLoaded || frame != null) {
+                      return AnimatedOpacity(
+                        opacity: frame != null ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: child,
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
 
               // ===== 层 1: 统一压暗遮罩 - 随向上滑动变得更暗 =====
@@ -1030,7 +1034,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
 
     // 优先检查 loading 状态
     if (isLoading && actions == null) {
-      return const Center(child: LoadingSpinner());
+      return const UserActionListSkeleton();
     }
 
     // 空状态
@@ -1083,7 +1087,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
 
     // 优先检查 loading 状态
     if (isLoading && reactions == null) {
-      return const Center(child: LoadingSpinner());
+      return const UserActionListSkeleton();
     }
 
     // 空状态

@@ -7,7 +7,7 @@ import 'topic_detail_page/topic_detail_page.dart';
 import 'user_profile_page.dart';
 import 'badge_page.dart';
 import '../services/discourse_cache_manager.dart';
-import '../widgets/common/loading_spinner.dart';
+import '../widgets/notification/notification_list_skeleton.dart';
 import '../utils/time_utils.dart';
 
 /// 通知列表页面
@@ -156,7 +156,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
               },
             );
           },
-          loading: () => const Center(child: LoadingSpinner()),
+          loading: () => const NotificationListSkeleton(),
           error: (error, stack) => Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

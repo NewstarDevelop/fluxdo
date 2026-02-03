@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as html_dom;
 import 'package:html/parser.dart' as html_parser;
-import '../widgets/common/loading_spinner.dart';
+import '../widgets/common/trust_level_skeleton.dart';
 import '../services/network/discourse_dio.dart';
 
 class TrustLevelRequirementsPage extends StatefulWidget {
@@ -138,7 +138,7 @@ class _TrustLevelRequirementsPageState
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: _isLoading
-          ? const Center(child: LoadingSpinner())
+          ? const TrustLevelSkeleton()
           : _error != null
               ? _buildError(theme)
               : RefreshIndicator(
