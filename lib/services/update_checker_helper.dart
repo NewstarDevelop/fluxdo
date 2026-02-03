@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'update_service.dart';
+
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/update_dialog.dart';
+import 'apk_download_service.dart';
+import 'update_service.dart';
 
 /// 更新检查助手类
 ///
@@ -32,17 +37,67 @@ class UpdateCheckerHelper {
         updateInfo: updateInfo,
         onUpdate: () {
           Navigator.of(context).pop();
-          launchUrl(
-            Uri.parse(updateInfo.releaseUrl),
-            mode: LaunchMode.externalApplication,
-          );
+          _handleUpdate(context, updateInfo);
         },
         onCancel: () => Navigator.of(context).pop(),
         onIgnore: () {
           updateService.setAutoCheckUpdate(false);
           Navigator.of(context).pop();
         },
+        onOpenReleasePage: () {
+          Navigator.of(context).pop();
+          _openInBrowser(updateInfo.releaseUrl);
+        },
       ),
+    );
+  }
+
+  /// 处理更新逻辑
+  ///
+  /// Android: 尝试应用内下载安装，失败则回退到浏览器
+  /// iOS/其他: 跳转到浏览器
+  static Future<void> _handleUpdate(
+    BuildContext context,
+    UpdateInfo updateInfo,
+  ) async {
+    if (Platform.isAndroid) {
+      await _startInAppDownload(context, updateInfo);
+    } else {
+      _openInBrowser(updateInfo.releaseUrl);
+    }
+  }
+
+  /// 启动应用内下载
+  static Future<void> _startInAppDownload(
+    BuildContext context,
+    UpdateInfo updateInfo,
+  ) async {
+    final updateService = UpdateService();
+    final apkAsset = await updateService.getMatchingApkAsset(updateInfo);
+
+    if (apkAsset == null) {
+      // 无法匹配架构，回退到浏览器
+      _openInBrowser(updateInfo.releaseUrl);
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => DownloadProgressDialog(
+        asset: apkAsset,
+        downloadService: ApkDownloadService(),
+      ),
+    );
+  }
+
+  /// 在浏览器中打开
+  static void _openInBrowser(String url) {
+    launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
     );
   }
 }

@@ -9,6 +9,7 @@ class UpdateDialog extends StatelessWidget {
   final VoidCallback onUpdate;
   final VoidCallback onCancel;
   final VoidCallback? onIgnore;
+  final VoidCallback? onOpenReleasePage;
 
   const UpdateDialog({
     super.key,
@@ -16,198 +17,205 @@ class UpdateDialog extends StatelessWidget {
     required this.onUpdate,
     required this.onCancel,
     this.onIgnore,
+    this.onOpenReleasePage,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final size = MediaQuery.of(context).size;
+    final maxContentHeight = size.height * 0.5;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       elevation: 0,
       backgroundColor: Colors.transparent,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 400),
+        constraints: const BoxConstraints(maxWidth: 380),
         decoration: BoxDecoration(
           color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha:0.1),
-              blurRadius: 20,
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 25,
               offset: const Offset(0, 10),
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
           children: [
-            // Header Image/Icon
-            Container(
-              height: 140,
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withValues(alpha:0.3),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned(
-                    top: -20,
-                    right: -20,
-                    child: Icon(
-                      Icons.rocket_launch_rounded,
-                      size: 120,
-                      color: colorScheme.primary.withValues(alpha:0.1),
-                    ),
-                  ),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surface,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: colorScheme.primary.withValues(alpha:0.2),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.rocket_launch_rounded,
-                          size: 40,
-                          color: colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '发现新版本',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+            // Decorative Watermark (Background)
+            Positioned(
+              right: -30,
+              top: -20,
+              child: Icon(
+                Icons.rocket_launch_rounded,
+                size: 200,
+                color: colorScheme.primary.withValues(alpha: 0.05),
               ),
             ),
             
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                   // Version Comparison
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header (Compact)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                  child: Row(
                     children: [
-                      _buildVersionChip(context, updateInfo.currentVersion, false),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Icon(Icons.arrow_forward_rounded, 
-                          size: 20, 
-                          color: colorScheme.outline,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                           Icons.auto_awesome, 
+                           color: colorScheme.onPrimaryContainer,
+                           size: 20,
                         ),
                       ),
-                      _buildVersionChip(context, updateInfo.remoteVersion, true),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '发现新版本',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                           Row(
+                              children: [
+                                _buildVersionText(context,
+                                    updateInfo.currentVersion, false),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6),
+                                  child: Icon(
+                                    Icons.arrow_right_alt_rounded,
+                                    size: 16,
+                                    color: colorScheme.outline,
+                                  ),
+                                ),
+                                _buildVersionText(context,
+                                    updateInfo.remoteVersion, true),
+                              ],
+                            ),
+                        ],
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 24),
-                  
-                  // Release Notes
-                  if (updateInfo.releaseNotes.isNotEmpty) ...[
-                    Text(
+                ),
+
+                // Content
+                if (updateInfo.releaseNotes.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    child: Text(
                       '更新内容',
-                      style: theme.textTheme.labelLarge?.copyWith(
+                      style: theme.textTheme.labelMedium?.copyWith(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha:0.5),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: colorScheme.outlineVariant.withValues(alpha:0.5),
+                  ),
+                
+                if (updateInfo.releaseNotes.isNotEmpty)
+                  Container(
+                    constraints: BoxConstraints(maxHeight: maxContentHeight),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                      child: HtmlWidget(
+                        md.markdownToHtml(updateInfo.releaseNotes),
+                        textStyle: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.5,
+                          fontSize: 14,
                         ),
-                      ),
-                      child: SingleChildScrollView(
-                        child: HtmlWidget(
-                          md.markdownToHtml(updateInfo.releaseNotes),
-                          textStyle: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                            height: 1.5,
-                          ),
-                          customStylesBuilder: (element) {
-                            if (element.localName == 'ul' || element.localName == 'ol') {
-                              return {'padding-left': '20px'};
-                            }
-                            return null;
-                          },
-                          onTapUrl: (url) async {
-                             return await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // Actions
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  FilledButton.icon(
-                    onPressed: onUpdate,
-                    icon: const Icon(Icons.download_rounded),
-                    label: const Text('立即更新'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        customStylesBuilder: (element) {
+                          if (element.localName == 'ul' ||
+                              element.localName == 'ol') {
+                            return {'padding-left': '20px'};
+                          }
+                          return null;
+                        },
+                        onTapUrl: (url) async {
+                           return await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                        },
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
+
+                // Actions
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (onIgnore != null)
-                        Expanded(
-                          child: TextButton(
-                            onPressed: onIgnore,
-                            style: TextButton.styleFrom(
-                              foregroundColor: colorScheme.onSurfaceVariant,
+                      FilledButton(
+                        onPressed: onUpdate,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('立即更新',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          if (onIgnore != null)
+                            TextButton(
+                              onPressed: onIgnore,
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                foregroundColor: colorScheme.onSurfaceVariant.withValues(alpha:0.7),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('不再提醒', style: TextStyle(fontSize: 13)),
                             ),
-                            child: const Text('不再提醒'),
+                          if (onOpenReleasePage != null)
+                             TextButton(
+                              onPressed: onOpenReleasePage,
+                                style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                foregroundColor: colorScheme.primary,
+                                 minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('查看详情', style: TextStyle(fontSize: 13)),
+                            ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: onCancel,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              foregroundColor: colorScheme.onSurfaceVariant,
+                               minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('稍后', style: TextStyle(fontSize: 13)),
                           ),
-                        ),
-                      Expanded(
-                        child: TextButton(
-                          onPressed: onCancel,
-                          style: TextButton.styleFrom(
-                            foregroundColor: colorScheme.onSurfaceVariant,
-                          ),
-                          child: const Text('稍后'),
-                        ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),
@@ -215,21 +223,20 @@ class UpdateDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildVersionChip(BuildContext context, String version, bool isNew) {
+  Widget _buildVersionText(BuildContext context, String version, bool isNew) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: isNew ? colorScheme.primaryContainer : colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
-        border: isNew ? Border.all(color: colorScheme.primary.withValues(alpha:0.5)) : null,
+         color: isNew ? colorScheme.primary.withValues(alpha: 0.1) : colorScheme.surfaceContainerHighest,
+         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         'v$version',
         style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: isNew ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
+          fontSize: 12,
+          fontWeight: isNew ? FontWeight.bold : FontWeight.normal,
+          color: isNew ? colorScheme.primary : colorScheme.onSurfaceVariant,
         ),
       ),
     );

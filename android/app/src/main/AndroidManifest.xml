@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 通知权限 (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- APK 安装权限 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="FluxDO"
         android:name="${applicationName}"
@@ -32,6 +34,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- FileProvider for OTA update -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.ota_update_provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/ota_update_filepaths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

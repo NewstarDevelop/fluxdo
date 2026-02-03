@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/update_service.dart';
+
+import '../services/apk_download_service.dart';
 import '../services/cf_challenge_logger.dart';
+import '../services/update_service.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/update_dialog.dart';
 
 class AboutPage extends StatefulWidget {
@@ -117,12 +122,13 @@ class _AboutPageState extends State<AboutPage> {
             updateInfo: updateInfo,
             onUpdate: () {
               Navigator.of(context).pop();
-              launchUrl(
-                Uri.parse(updateInfo.releaseUrl),
-                mode: LaunchMode.externalApplication,
-              );
+              _handleUpdate(updateInfo);
             },
             onCancel: () => Navigator.of(context).pop(),
+            onOpenReleasePage: () {
+              Navigator.of(context).pop();
+              _openInBrowser(updateInfo.releaseUrl);
+            },
           ),
         );
       } else {
@@ -133,6 +139,45 @@ class _AboutPageState extends State<AboutPage> {
       Navigator.of(context).pop(); // 关闭加载对话框
       _showErrorDialog(e.toString());
     }
+  }
+
+  /// 处理更新逻辑
+  Future<void> _handleUpdate(UpdateInfo updateInfo) async {
+    if (Platform.isAndroid) {
+      await _startInAppDownload(updateInfo);
+    } else {
+      _openInBrowser(updateInfo.releaseUrl);
+    }
+  }
+
+  /// 启动应用内下载
+  Future<void> _startInAppDownload(UpdateInfo updateInfo) async {
+    final apkAsset = await _updateService.getMatchingApkAsset(updateInfo);
+
+    if (apkAsset == null) {
+      // 无法匹配架构，回退到浏览器
+      _openInBrowser(updateInfo.releaseUrl);
+      return;
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => DownloadProgressDialog(
+        asset: apkAsset,
+        downloadService: ApkDownloadService(),
+      ),
+    );
+  }
+
+  /// 在浏览器中打开
+  void _openInBrowser(String url) {
+    launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
   }
 
   void _showNoUpdateDialog(String currentVersion) {
@@ -172,7 +217,7 @@ class _AboutPageState extends State<AboutPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('关于'),
@@ -214,7 +259,7 @@ class _AboutPageState extends State<AboutPage> {
             ),
           ),
           const SizedBox(height: 48),
-          
+
           // Action List
           _buildSectionTitle(context, '信息'),
           _buildListTile(
@@ -234,9 +279,9 @@ class _AboutPageState extends State<AboutPage> {
               applicationLegalese: '非官方 Linux.do 客户端\n基于 Flutter & Material 3',
             ),
           ),
-          
+
           const Divider(height: 32, indent: 16, endIndent: 16),
-          
+
           _buildSectionTitle(context, '开发'),
           if (_developerMode)
             SwitchListTile(
@@ -268,11 +313,11 @@ class _AboutPageState extends State<AboutPage> {
               mode: LaunchMode.externalApplication,
             ),
           ),
-          
+
           const SizedBox(height: 40),
           Center(
             child: Text(
-              'Made with Flutter & ❤️',
+              'Made with Flutter & \u2764\uFE0F',
               style: theme.textTheme.labelMedium?.copyWith(
                 color: theme.colorScheme.outline,
               ),
