@@ -1113,7 +1113,14 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     final params = TopicDetailParams(widget.topicId, postNumber: _scrollController.currentPostNumber, instanceId: _instanceId);
 
     // 初始加载或切换模式时显示骨架屏
-    if ((detailAsync.isLoading && detail == null) || _isSwitchingMode) {
+    // 注意：当 hasError 为 true 时，即使 isLoading 也为 true（AsyncLoading.copyWithPrevious 语义），
+    // 也应该优先显示错误页面而不是骨架屏
+    if (_isSwitchingMode) {
+      final showHeaderSkeleton = widget.scrollToPostNumber == null || widget.scrollToPostNumber == 0;
+      return _wrapWithConstraint(PostListSkeleton(withHeader: showHeaderSkeleton));
+    }
+    
+    if (detailAsync.isLoading && detail == null && !detailAsync.hasError) {
       final showHeaderSkeleton = widget.scrollToPostNumber == null || widget.scrollToPostNumber == 0;
       return _wrapWithConstraint(PostListSkeleton(withHeader: showHeaderSkeleton));
     }
