@@ -169,39 +169,11 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
       (match) => '${match.group(1)}\u200B',
     );
 
-    // 3. 注入链接点击次数
-    if (widget.linkCounts != null && widget.linkCounts!.isNotEmpty) {
-      for (final lc in widget.linkCounts!) {
-        if (lc.clicks > 0) {
-          final clicksText = _formatClicks(lc.clicks);
-          final escapedUrl = RegExp.escape(lc.url);
-          final pattern = RegExp(
-            '(<a[^>]*href=["\']$escapedUrl["\'][^>]*>)(.*?)(</a>)',
-            caseSensitive: false,
-          );
-          processedHtml = processedHtml.replaceAllMapped(pattern, (match) {
-            final openTag = match.group(1)!;
-            final content = match.group(2)!;
-            final closeTag = match.group(3)!;
-            return '$openTag$content<span class="link-click-count" style="color:#888;font-size:11px"> $clicksText</span>$closeTag';
-          });
-        }
-      }
-    }
-
     if (enablePanguSpacing) {
       processedHtml = _pangu.spacingText(processedHtml);
     }
 
     return processedHtml;
-  }
-
-  /// 格式化点击次数 (如: 1234 -> 1.2k)
-  String _formatClicks(int count) {
-    if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}k';
-    }
-    return count.toString();
   }
 
   /// 追踪链接点击
@@ -386,8 +358,7 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
         onInternalLinkTap: widget.onInternalLinkTap,
         post: widget.post,
         topicId: widget.topicId,
-        // 避免嵌套渲染重复注入点击数
-        linkCounts: null,
+        linkCounts: widget.linkCounts,
         mentionedUsers: widget.mentionedUsers,
         enableSelectionArea: widget.enableSelectionArea,
         enablePanguSpacing: widget.enablePanguSpacing,
@@ -559,6 +530,141 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
       );
     }
 
+    // 处理带点击数的普通链接
+    if (element.localName == 'a' && widget.linkCounts != null) {
+      // 排除 mention 链接和其他特殊链接
+      if (element.classes.contains('mention') ||
+          element.classes.contains('hashtag') ||
+          element.classes.contains('anchor') ||
+          element.classes.contains('back')) {
+        return null;
+      }
+
+      final href = element.attributes['href'] as String?;
+      if (href == null || href.isEmpty) return null;
+
+      // 查找点击数
+      final clickCount = _findClickCount(href);
+      if (clickCount == null) return null;
+
+      // 构建带点击数的链接 widget
+      return _buildLinkWithClickCount(
+        context: context,
+        theme: theme,
+        element: element,
+        href: href,
+        clickCount: clickCount,
+      );
+    }
+
     return null;
+  }
+
+  /// 查找链接的点击数
+  int? _findClickCount(String url) {
+    if (widget.linkCounts == null) return null;
+
+    for (final lc in widget.linkCounts!) {
+      if (lc.clicks > 0 && _urlMatches(lc.url, url)) {
+        return lc.clicks;
+      }
+    }
+    return null;
+  }
+
+  /// URL 匹配（忽略末尾斜杠和协议差异）
+  bool _urlMatches(String url1, String url2) {
+    final normalized1 = url1
+        .replaceFirst(RegExp(r'^https?://'), '')
+        .replaceFirst(RegExp(r'/$'), '');
+    final normalized2 = url2
+        .replaceFirst(RegExp(r'^https?://'), '')
+        .replaceFirst(RegExp(r'/$'), '');
+    return normalized1 == normalized2;
+  }
+
+  /// 格式化点击数
+  String _formatClickCount(int count) {
+    if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}k';
+    }
+    return count.toString();
+  }
+
+  /// 构建带点击数的链接 widget
+  Widget _buildLinkWithClickCount({
+    required BuildContext context,
+    required ThemeData theme,
+    required dynamic element,
+    required String href,
+    required int clickCount,
+  }) {
+    final linkText = element.text?.trim() ?? href;
+    final formattedCount = _formatClickCount(clickCount);
+
+    return InlineCustomWidget(
+      child: GestureDetector(
+        onTap: () async {
+          _trackClick(href);
+
+          // 处理用户链接
+          final userMatch = RegExp(r'(?:linux\.do)?/u/([^/?#]+)').firstMatch(href);
+          if (userMatch != null) {
+            final username = userMatch.group(1)!;
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => UserProfilePage(username: username)),
+            );
+            return;
+          }
+
+          // 处理话题链接
+          final topicMatch = RegExp(r'(?:linux\.do)?/t/(?:[^/]+/)?(\d+)').firstMatch(href);
+          if (topicMatch != null && widget.onInternalLinkTap != null) {
+            final topicId = int.parse(topicMatch.group(1)!);
+            final slugMatch = RegExp(r'(?:linux\.do)?/t/([^/]+)/\d+').firstMatch(href);
+            final slug = (slugMatch != null && slugMatch.group(1) != 'topic')
+                ? slugMatch.group(1)
+                : null;
+            widget.onInternalLinkTap!(topicId, slug);
+            return;
+          }
+
+          // 外部链接
+          await launchExternalLink(context, href);
+        },
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: linkText,
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const WidgetSpan(child: SizedBox(width: 4)),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    formattedCount,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 10,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
