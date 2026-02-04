@@ -8,8 +8,8 @@ import 'providers/discourse_providers.dart';
 import 'providers/message_bus_providers.dart';
 import 'services/discourse/discourse_service.dart';
 import 'providers/app_state_refresher.dart';
-import 'services/discourse_cache_manager.dart';
 import 'services/highlighter_service.dart';
+import 'widgets/common/smart_avatar.dart';
 import 'services/network/cookie/cookie_sync_service.dart';
 import 'services/network/cookie/cookie_jar_service.dart';
 import 'services/network/adapters/cronet_fallback_service.dart';
@@ -21,6 +21,7 @@ import 'services/network/doh_proxy/proxy_certificate.dart';
 import 'services/cf_challenge_logger.dart';
 import 'services/update_service.dart';
 import 'services/update_checker_helper.dart';
+import 'services/deep_link_service.dart';
 import 'models/user.dart';
 import 'constants.dart';
 
@@ -171,6 +172,9 @@ class _MainPageState extends ConsumerState<MainPage> {
       DiscourseService().setNavigatorContext(context);
       PreloadedDataService().setNavigatorContext(context);
 
+      // 初始化 Deep Link 服务
+      DeepLinkService.instance.initialize(context);
+
       // 自动检查更新
       _autoCheckUpdate();
     });
@@ -282,12 +286,10 @@ class _MainPageState extends ConsumerState<MainPage> {
     final avatarUrl = user?.getAvatarUrl();
     final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
     final avatarWidget = hasAvatar
-        ? SizedBox(
-            width: 24,
-            height: 24,
-            child: CircleAvatar(
-              backgroundImage: discourseImageProvider(avatarUrl),
-            ),
+        ? SmartAvatar(
+            imageUrl: avatarUrl,
+            radius: 12,
+            fallbackText: user?.username,
           )
         : null;
 

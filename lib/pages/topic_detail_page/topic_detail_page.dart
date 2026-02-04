@@ -21,6 +21,7 @@ import '../../widgets/post/reply_sheet.dart';
 import '../../widgets/topic/topic_progress.dart';
 import '../../widgets/topic/topic_notification_button.dart';
 import '../../widgets/common/emoji_text.dart';
+import '../../widgets/common/error_view.dart';
 import '../../widgets/content/discourse_html_content/chunked/chunked_html_content.dart';
 import 'controllers/post_highlight_controller.dart';
 import 'controllers/post_visibility_tracker.dart';
@@ -484,8 +485,10 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
         final safeIndex = (posts.length - 20).clamp(0, posts.length - 1);
         anchorPostNumber = posts[safeIndex].postNumber;
       }
-      _visibilityTracker.reset(); // 清除旧的可见性数据，防止“占位”导致进度条回跳
+      _visibilityTracker.reset(); // 清除旧的可见性数据，防止"占位"导致进度条回跳
       _scrollController.jumpToPostLocally(postNumber, anchorPostNumber: anchorPostNumber);
+      // 触发重建，让 _buildPostListContent 重新进入初始定位逻辑
+      if (mounted) setState(() {});
     }
     _highlightController.triggerHighlight(postNumber);
   }
@@ -528,6 +531,8 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
 
         _visibilityTracker.reset(); // 清除旧的可见性数据
         _scrollController.jumpToPostLocally(post.postNumber, anchorPostNumber: anchorPostNumber);
+        // 触发重建，让 _buildPostListContent 重新进入初始定位逻辑
+        if (mounted) setState(() {});
       }
       _highlightController.triggerHighlight(post.postNumber);
       return;
@@ -1109,7 +1114,14 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     final params = TopicDetailParams(widget.topicId, postNumber: _scrollController.currentPostNumber, instanceId: _instanceId);
 
     // 初始加载或切换模式时显示骨架屏
-    if ((detailAsync.isLoading && detail == null) || _isSwitchingMode) {
+    // 注意：当 hasError 为 true 时，即使 isLoading 也为 true（AsyncLoading.copyWithPrevious 语义），
+    // 也应该优先显示错误页面而不是骨架屏
+    if (_isSwitchingMode) {
+      final showHeaderSkeleton = widget.scrollToPostNumber == null || widget.scrollToPostNumber == 0;
+      return _wrapWithConstraint(PostListSkeleton(withHeader: showHeaderSkeleton));
+    }
+    
+    if (detailAsync.isLoading && detail == null && !detailAsync.hasError) {
       final showHeaderSkeleton = widget.scrollToPostNumber == null || widget.scrollToPostNumber == 0;
       return _wrapWithConstraint(PostListSkeleton(withHeader: showHeaderSkeleton));
     }
@@ -1133,23 +1145,9 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       // 错误页面
       content = CustomScrollView(
         slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text('加载失败\n${detailAsync.error}', textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => ref.refresh(topicDetailProvider(params)),
-                    child: const Text('重试'),
-                  ),
-                ],
-              ),
-            ),
+          SliverErrorView(
+            error: detailAsync.error!,
+            onRetry: () => ref.refresh(topicDetailProvider(params)),
           ),
         ],
       );

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../providers/discourse_providers.dart';
 import '../services/discourse_cache_manager.dart';
+import 'webview_page.dart';
 import 'webview_login_page.dart';
 import 'appearance_page.dart';
 import 'browsing_history_page.dart';
@@ -19,6 +20,7 @@ import '../widgets/common/loading_spinner.dart';
 import '../widgets/common/loading_dialog.dart';
 import '../widgets/common/notification_icon_button.dart';
 import '../widgets/common/flair_badge.dart';
+import '../widgets/common/smart_avatar.dart';
 import '../providers/app_state_refresher.dart';
 import 'metaverse_page.dart';
 import '../widgets/ldc_balance_card.dart';
@@ -34,9 +36,15 @@ class ProfilePage extends ConsumerStatefulWidget {
 }
 
 class _ProfilePageState extends ConsumerState<ProfilePage> {
+  late ScrollController _scrollController;
+  bool _showTitle = false;
+
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
+    
     // 进入页面后静默刷新用户数据（不触发 loading 状态）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -49,6 +57,25 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    
+    // 当滚动超过一定距离（例如头像区域的高度）时显示标题
+    // 头像(72) + padding(大概20)
+    final show = _scrollController.offset > 80;
+    if (show != _showTitle) {
+      setState(() {
+        _showTitle = show;
+      });
+    }
   }
 
   Future<void> _goToLogin() async {
@@ -103,29 +130,90 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       }
     }
   }
+
+  Future<void> _openProfileEdit() async {
+    final username = ref.read(currentUserProvider).value?.username;
+    if (username != null && username.isNotEmpty) {
+      await WebViewPage.open(
+        context, 
+        'https://linux.do/u/$username/preferences/account',
+        title: '编辑资料',
+        injectCss: '''
+          .new-user-content-wrapper {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: 100 !important;
+            background: var(--d-content-background, var(--secondary)) !important;
+            overflow-y: auto !important;
+            padding: 20px !important;
+            box-sizing: border-box !important;
+          }
+          .d-header {
+            display: none !important;
+          }
+        ''',
+      );
+      
+      // 返回后静默刷新数据
+      if (mounted) {
+        ref.read(currentUserProvider.notifier).refreshSilently().ignore();
+        ref.refresh(userSummaryProvider.future).ignore();
+      }
+    }
+  }
   
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isLoggedIn = ref.watch(currentUserProvider.select((value) => value.value != null));
-    final isLoadingInitial = ref.watch(
-      currentUserProvider.select((value) => value.isLoading && !value.hasValue),
-    );
-    final hasError = ref.watch(
-      currentUserProvider.select((value) => value.hasError && !value.hasValue),
-    );
-    final errorMessage = ref.watch(
-      currentUserProvider.select((value) => value.error?.toString() ?? ''),
-    );
+    final userState = ref.watch(currentUserProvider);
+    final isLoggedIn = userState.value != null;
+    final user = userState.value;
+    final displayName = user?.name ?? user?.username ?? '';
+    
+    final isLoadingInitial = userState.isLoading && !userState.hasValue;
+    final hasError = userState.hasError && !userState.hasValue;
+    final errorMessage = userState.error?.toString() ?? '';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的'),
-        centerTitle: true,
-        actions: isLoggedIn ? const [Padding(
-          padding: EdgeInsets.only(right: 8.0),
-          child: NotificationIconButton(),
-        )] : null,
+        title: _showTitle && displayName.isNotEmpty 
+            ? GestureDetector(
+                onTap: () {
+                  _scrollController.animateTo(
+                    0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SmartAvatar(
+                      imageUrl: user?.getAvatarUrl(),
+                      radius: 14,
+                      fallbackText: displayName,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+              )
+            : null,
+        centerTitle: false,
+        actions: isLoggedIn ? [
+          IconButton(
+            icon: const Icon(Icons.manage_accounts_rounded),
+            tooltip: '编辑资料',
+            onPressed: _openProfileEdit,
+          ),
+          const Padding(
+            padding: EdgeInsets.only(right: 8.0),
+            child: NotificationIconButton(),
+          )
+        ] : null,
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -140,6 +228,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           }
         },
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           children: [
             const _ProfileHeader(),
@@ -645,40 +734,22 @@ class _ProfileAvatar extends StatefulWidget {
 }
 
 class _ProfileAvatarState extends State<_ProfileAvatar> with AutomaticKeepAliveClientMixin {
-  late String _avatarUrl;
-  ImageProvider? _cachedImageProvider;
   Widget? _cachedAvatarWithFlair;
-  String _cachedFlairSignature = '';
+  String _cachedSignature = '';
 
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    _avatarUrl = widget.avatarUrl;
-    _cachedFlairSignature = _buildFlairSignature();
-    if (_avatarUrl.isNotEmpty) {
-      _cachedImageProvider = discourseImageProvider(_avatarUrl);
-    }
+  String _buildCacheSignature() {
+    return '${widget.avatarUrl}_${widget.flairUrl}_${widget.flairName}_${widget.flairBgColor}_${widget.flairColor}';
   }
 
   @override
   void didUpdateWidget(_ProfileAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 只有当 URL 真的变化时才更新 ImageProvider
-    final newUrl = widget.avatarUrl;
-    final newFlairSignature = _buildFlairSignature();
-
-    if (newUrl != _avatarUrl) {
-      _avatarUrl = newUrl;
-      _cachedImageProvider = newUrl.isNotEmpty ? discourseImageProvider(newUrl) : null;
-      _cachedAvatarWithFlair = null; // 头像变化，清除缓存
-    }
-
-    if (newFlairSignature != _cachedFlairSignature) {
-      _cachedFlairSignature = newFlairSignature;
-      _cachedAvatarWithFlair = null; // flair 变化，清除缓存
+    final newSignature = _buildCacheSignature();
+    if (newSignature != _cachedSignature) {
+      _cachedAvatarWithFlair = null;
     }
   }
 
@@ -686,10 +757,11 @@ class _ProfileAvatarState extends State<_ProfileAvatar> with AutomaticKeepAliveC
   Widget build(BuildContext context) {
     super.build(context); // 必须调用以支持 AutomaticKeepAliveClientMixin
 
-    // 如果已经缓存了 AvatarWithFlair widget，直接返回
-    if (_cachedAvatarWithFlair != null) {
+    final signature = _buildCacheSignature();
+    if (_cachedAvatarWithFlair != null && signature == _cachedSignature) {
       return _cachedAvatarWithFlair!;
     }
+    _cachedSignature = signature;
 
     final theme = Theme.of(context);
 
@@ -702,34 +774,19 @@ class _ProfileAvatarState extends State<_ProfileAvatar> with AutomaticKeepAliveC
       flairName: widget.flairName,
       flairBgColor: widget.flairBgColor,
       flairColor: widget.flairColor,
-      avatar: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: theme.colorScheme.surfaceContainerHighest,
-            width: 1,
-          ),
-        ),
-        child: CircleAvatar(
-          radius: 36,
-          backgroundColor: theme.colorScheme.surfaceContainerHighest,
-          backgroundImage: _cachedImageProvider,
-          child: _avatarUrl.isEmpty
-              ? Icon(
-                  widget.isLoggedIn ? Icons.person : Icons.person_outline,
-                  size: 36,
-                  color: theme.colorScheme.onSurfaceVariant,
-                )
-              : null,
+      avatar: SmartAvatar(
+        imageUrl: widget.avatarUrl.isNotEmpty ? widget.avatarUrl : null,
+        radius: 36,
+        fallbackText: widget.isLoggedIn ? null : '',
+        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+        border: Border.all(
+          color: theme.colorScheme.surfaceContainerHighest,
+          width: 1,
         ),
       ),
     );
 
     return _cachedAvatarWithFlair!;
-  }
-
-  String _buildFlairSignature() {
-    return '${widget.flairUrl}|${widget.flairName}|${widget.flairBgColor}|${widget.flairColor}';
   }
 }
 

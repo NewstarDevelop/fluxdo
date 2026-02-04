@@ -399,49 +399,20 @@ class OneboxAvatar extends StatelessWidget {
   }
 }
 
-/// 从元素中提取并移除点击数
-String? extractAndRemoveClickCount(dynamic element) {
-  if (element == null) return null;
-
-  // 方式1: 从 .link-click-count span 提取
-  final clickCountSpan = element.querySelector('.link-click-count');
-  if (clickCountSpan != null) {
-    final count = clickCountSpan.text.trim();
-    clickCountSpan.remove();
-    return count;
-  }
-
-  // 方式2: 从 data-clicks 属性提取
-  final dataClicks = element.attributes['data-clicks'];
-  if (dataClicks != null && dataClicks.isNotEmpty) {
-    return dataClicks;
-  }
-
-  return null;
-}
-
-/// 从 onebox 元素中提取点击数（不移除）
-/// 优先从 linkCounts 数据中匹配 URL 查找，其次从 HTML 元素中提取
+/// 从 onebox 元素中提取点击数
+/// 从 linkCounts 数据中通过 URL 匹配查找
 String? extractClickCountFromOnebox(dynamic element, {List<LinkCount>? linkCounts}) {
-  if (element == null) return null;
+  if (element == null || linkCounts == null) return null;
 
   // 提取 onebox 的 URL
   final url = extractUrl(element);
+  if (url.isEmpty) return null;
 
-  // 方式1: 从 linkCounts 数据中通过 URL 匹配查找
-  if (linkCounts != null && url.isNotEmpty) {
-    for (final lc in linkCounts) {
-      if (lc.clicks > 0 && _urlMatches(lc.url, url)) {
-        return _formatClickCount(lc.clicks);
-      }
+  // 从 linkCounts 数据中通过 URL 匹配查找
+  for (final lc in linkCounts) {
+    if (lc.clicks > 0 && _urlMatches(lc.url, url)) {
+      return _formatClickCount(lc.clicks);
     }
-  }
-
-  // 方式2: 从 .link-click-count span 提取（预处理注入的）
-  final clickCountSpan = element.querySelector('.link-click-count');
-  if (clickCountSpan != null) {
-    final text = clickCountSpan.text.trim();
-    if (text.isNotEmpty) return text;
   }
 
   return null;

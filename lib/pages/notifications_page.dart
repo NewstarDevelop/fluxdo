@@ -6,9 +6,10 @@ import '../providers/discourse_providers.dart';
 import 'topic_detail_page/topic_detail_page.dart';
 import 'user_profile_page.dart';
 import 'badge_page.dart';
-import '../services/discourse_cache_manager.dart';
 import '../widgets/common/emoji_text.dart';
+import '../widgets/common/smart_avatar.dart';
 import '../widgets/notification/notification_list_skeleton.dart';
+import '../widgets/common/error_view.dart';
 import '../utils/time_utils.dart';
 
 /// 通知列表页面
@@ -158,20 +159,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             );
           },
           loading: () => const NotificationListSkeleton(),
-          error: (error, stack) => Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                Text('加载失败: $error'),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _onRefresh,
-                  child: const Text('重试'),
-                ),
-              ],
-            ),
+          error: (error, stack) => ErrorView(
+            error: error,
+            stackTrace: stack,
+            onRetry: _onRefresh,
           ),
         ),
       ),
@@ -306,18 +297,12 @@ class _NotificationItem extends StatelessWidget {
             // 底层：用户头像
             Align(
               alignment: Alignment.center,
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: CircleAvatar(
-                  backgroundColor: colorScheme.surfaceContainerHighest,
-                  backgroundImage: notification.getAvatarUrl().isNotEmpty
-                      ? discourseImageProvider(notification.getAvatarUrl())
-                      : null,
-                  child: notification.getAvatarUrl().isEmpty
-                      ? const Icon(Icons.notifications, size: 20)
-                      : null,
-                ),
+              child: SmartAvatar(
+                imageUrl: notification.getAvatarUrl().isNotEmpty
+                    ? notification.getAvatarUrl()
+                    : null,
+                radius: 20,
+                backgroundColor: colorScheme.surfaceContainerHighest,
               ),
             ),
             // 右上角：通知类型图标
