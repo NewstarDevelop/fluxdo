@@ -182,10 +182,10 @@ class DiscourseNotification {
 
   /// 获取通知标题
   String get title {
-    // 优先使用 fancy_title
-    if (fancyTitle != null && fancyTitle!.isNotEmpty) return fancyTitle!;
-    // 其次使用 data.topicTitle
+    // 优先使用 data.topicTitle（纯文本格式，避免 HTML 实体问题）
     if (data.topicTitle != null && data.topicTitle!.isNotEmpty) return data.topicTitle!;
+    // 其次使用 fancy_title
+    if (fancyTitle != null && fancyTitle!.isNotEmpty) return fancyTitle!;
     // 兜底使用通知类型
     return notificationType.label;
   }
