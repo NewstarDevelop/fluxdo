@@ -14,7 +14,7 @@ import 'my_badges_page.dart';
 import 'user_profile_page.dart';
 import 'trust_level_requirements_page.dart';
 import 'about_page.dart';
-import 'network_settings_page.dart';
+import 'network_settings_page/network_settings_page.dart';
 import 'preferences_page.dart';
 import '../widgets/common/loading_spinner.dart';
 import '../widgets/common/loading_dialog.dart';
