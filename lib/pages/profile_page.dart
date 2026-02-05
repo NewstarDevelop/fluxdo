@@ -23,6 +23,7 @@ import '../widgets/common/flair_badge.dart';
 import '../widgets/common/smart_avatar.dart';
 import '../providers/app_state_refresher.dart';
 import 'metaverse_page.dart';
+import 'drafts_page.dart';
 import '../widgets/ldc_balance_card.dart';
 import '../providers/ldc_providers.dart';
 import '../utils/number_utils.dart';
@@ -388,10 +389,16 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       child: Column(
         children: [
           _buildOptionTile(
-            icon: Icons.bookmark_rounded, 
+            icon: Icons.bookmark_rounded,
             iconColor: Colors.orange,
-            title: '我的书签', 
+            title: '我的书签',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarksPage()))
+          ),
+          _buildOptionTile(
+            icon: Icons.drafts_rounded,
+            iconColor: Colors.teal,
+            title: '我的草稿',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DraftsPage()))
           ),
           _buildOptionTile(
             icon: Icons.article_rounded, 

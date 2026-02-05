@@ -37,11 +37,19 @@ extension _UserActions on _TopicDetailPageState {
     final params = _params;
     final detail = ref.read(topicDetailProvider(params)).value;
 
+    // 预加载草稿：在点击回复时就发起请求，利用 BottomSheet 动画时间并行加载
+    final draftKey = Draft.replyKey(
+      widget.topicId,
+      replyToPostNumber: replyToPost?.postNumber,
+    );
+    final preloadedDraftFuture = DiscourseService().getDraft(draftKey);
+
     final newPost = await showReplySheet(
       context: context,
       topicId: widget.topicId,
       categoryId: detail?.categoryId,
       replyToPost: replyToPost,
+      preloadedDraftFuture: preloadedDraftFuture,
     );
 
     if (newPost != null && mounted) {

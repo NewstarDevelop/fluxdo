@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../utils/link_launcher.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
+import '../../models/draft.dart';
 import '../../models/topic.dart';
 import '../../utils/responsive.dart';
 import '../../utils/share_utils.dart';
@@ -40,6 +41,8 @@ class TopicDetailPage extends ConsumerStatefulWidget {
   final String? initialTitle;
   final int? scrollToPostNumber; // 外部控制的跳转位置（如从通知跳转到指定楼层）
   final bool embeddedMode; // 嵌入模式（双栏布局中使用，不显示返回按钮）
+  final bool autoOpenReply; // 自动打开回复框（从草稿进入时使用）
+  final int? autoReplyToPostNumber; // 自动回复的帖子编号（从草稿进入时使用）
 
   const TopicDetailPage({
     super.key,
@@ -47,6 +50,8 @@ class TopicDetailPage extends ConsumerStatefulWidget {
     this.initialTitle,
     this.scrollToPostNumber,
     this.embeddedMode = false,
+    this.autoOpenReply = false,
+    this.autoReplyToPostNumber,
   });
 
   @override
@@ -89,6 +94,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   Set<int> _lastReadPostNumbers = {};
   bool? _lastCanShowDetailPane;
   bool _isAutoSwitching = false;
+  bool _autoOpenReplyHandled = false; // 是否已处理自动打开回复框
 
   @override
   void initState() {
@@ -492,6 +498,23 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
             if (mounted) {
               setState(() => _hasFirstPost = hasFirstPost);
               _scheduleCheckTitleVisibility();
+            }
+          });
+        }
+
+        // 自动打开回复框（从草稿进入时）
+        if (widget.autoOpenReply && !_autoOpenReplyHandled) {
+          _autoOpenReplyHandled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              // 如果指定了回复帖子编号，找到对应的帖子
+              Post? replyToPost;
+              if (widget.autoReplyToPostNumber != null) {
+                replyToPost = posts.where(
+                  (p) => p.postNumber == widget.autoReplyToPostNumber,
+                ).firstOrNull;
+              }
+              _handleReply(replyToPost);
             }
           });
         }
