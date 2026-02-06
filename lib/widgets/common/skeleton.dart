@@ -30,12 +30,15 @@ class _SkeletonState extends State<Skeleton> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // 使用更明显的渐变效果
+    // 注意：不能使用 Colors.transparent（它是透明黑色 0x00000000），
+    // 否则在浅色模式下与 surface 背景色混合时会产生黑色扫描效果
+    final transparentSurface = theme.colorScheme.surface.withAlpha(0);
     final shimmerGradient = LinearGradient(
       colors: [
-        Colors.transparent,
+        transparentSurface,
         theme.colorScheme.surface.withAlpha(80),
         theme.colorScheme.surface.withAlpha(80),
-        Colors.transparent,
+        transparentSurface,
       ],
       stops: const [0.1, 0.3, 0.5, 0.7],
       begin: const Alignment(-1.0, -0.3),
