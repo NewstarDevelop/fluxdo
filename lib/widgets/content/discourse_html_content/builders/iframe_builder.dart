@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../../../../constants.dart';
 import '../../../../utils/layout_lock.dart';
+
+/// 是否需要交互遮罩（macOS 上 WebView 会捕获滚动事件）
+bool get _needsInteractionMask => !kIsWeb && Platform.isMacOS;
 
 /// iframe 属性解析结果
 class IframeAttributes {
@@ -145,6 +150,10 @@ class _IframeWidgetState extends State<IframeWidget> {
   bool _hasError = false;
   bool _didLockLayout = false;
 
+  /// 桌面平台：是否进入交互模式
+  bool _interacting = false;
+  OverlayEntry? _overlayEntry;
+
   @override
   void initState() {
     super.initState();
@@ -152,8 +161,60 @@ class _IframeWidgetState extends State<IframeWidget> {
 
   @override
   void dispose() {
+    _removeOverlay();
     _unlockLayoutIfNeeded();
     super.dispose();
+  }
+
+  void _enterInteractMode() {
+    setState(() => _interacting = true);
+    _showOverlay();
+  }
+
+  void _exitInteractMode() {
+    _removeOverlay();
+    setState(() => _interacting = false);
+  }
+
+  void _showOverlay() {
+    _removeOverlay();
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 8,
+        left: 0,
+        right: 0,
+        child: Center(
+          child: Material(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: _exitInteractMode,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.close, size: 18, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text(
+                      '退出交互',
+                      style: TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
   }
 
   @override
@@ -169,9 +230,12 @@ class _IframeWidgetState extends State<IframeWidget> {
           borderRadius: BorderRadius.circular(8),
           child: Stack(
             children: [
-              // WebView
+              // WebView - 始终渲染
               InAppWebView(
-                initialUrlRequest: URLRequest(url: WebUri(attrs.fullUrl)),
+                initialData: InAppWebViewInitialData(
+                  data: _buildHtml(attrs),
+                  baseUrl: WebUri(AppConstants.baseUrl),
+                ),
                 initialSettings: _buildSettings(attrs),
                 onEnterFullscreen: (controller) {
                   _lockLayout();
@@ -232,6 +296,23 @@ class _IframeWidgetState extends State<IframeWidget> {
                     ),
                   ),
                 ),
+              // 桌面平台：交互遮罩
+              if (_needsInteractionMask && !_interacting && _isLoaded && !_hasError)
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: _enterInteractMode,
+                    child: Container(
+                      color: Colors.black38,
+                      child: const Center(
+                        child: Icon(
+                          Icons.touch_app,
+                          size: 48,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -239,17 +320,68 @@ class _IframeWidgetState extends State<IframeWidget> {
     );
   }
 
+  /// 构建包装 iframe 的 HTML（解决 YouTube 等平台的 origin 问题）
+  String _buildHtml(IframeAttributes attrs) {
+    final src = attrs.fullUrl;
+
+    // 构建 allow 属性，默认添加常用权限
+    final allowAttrs = <String>{
+      'fullscreen',
+      'autoplay',
+      'encrypted-media',
+      'picture-in-picture',
+      'web-share',
+      ...attrs.allow,
+    };
+
+    final allowAttr = 'allow="${allowAttrs.join('; ')}"';
+
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <iframe
+    src="$src"
+    $allowAttr
+    allowfullscreen
+    referrerpolicy="no-referrer-when-downgrade"
+  ></iframe>
+</body>
+</html>
+''';
+  }
+
   InAppWebViewSettings _buildSettings(IframeAttributes attrs) {
     return InAppWebViewSettings(
+      // User-Agent
+      userAgent: AppConstants.userAgent,
+
       // JavaScript
-      javaScriptEnabled: attrs.allowScripts,
+      javaScriptEnabled: true,
 
       // 媒体播放
       mediaPlaybackRequiresUserGesture: !attrs.allowAutoplay,
       allowsInlineMediaPlayback: true,
 
       // 全屏
-      iframeAllowFullscreen: attrs.allowFullscreen,
+      iframeAllowFullscreen: true,
 
       // 外观
       transparentBackground: true,
@@ -260,8 +392,12 @@ class _IframeWidgetState extends State<IframeWidget> {
       // 性能
       useHybridComposition: true,
 
-      // 引用策略
+      // 内容模式
       preferredContentMode: UserPreferredContentMode.RECOMMENDED,
+
+      // 允许混合内容和第三方 cookies
+      mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+      thirdPartyCookiesEnabled: true,
     );
   }
 
