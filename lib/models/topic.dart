@@ -1,5 +1,6 @@
 // 帖子数据模型
 import '../utils/time_utils.dart';
+import 'user.dart';
 
 /// 标签模型
 class Tag {
@@ -337,6 +338,37 @@ class MentionedUser {
   }
 }
 
+/// 帖子头部显示的徽章
+class GrantedBadge {
+  final int id;
+  final String name;
+  final String? icon;      // FontAwesome 图标名，如 "seedling"
+  final String? imageUrl;  // 图片 URL（与 icon 二选一）
+  final String slug;
+  final int badgeTypeId;   // 1=Gold, 2=Silver, 3=Bronze
+
+  const GrantedBadge({
+    required this.id,
+    required this.name,
+    this.icon,
+    this.imageUrl,
+    required this.slug,
+    this.badgeTypeId = 0,
+  });
+
+  factory GrantedBadge.fromJson(Map<String, dynamic> json) {
+    final badge = json['badge'] as Map<String, dynamic>? ?? json;
+    return GrantedBadge(
+      id: badge['id'] as int? ?? 0,
+      name: badge['name'] as String? ?? '',
+      icon: badge['icon'] as String?,
+      imageUrl: badge['image_url'] as String?,
+      slug: badge['slug'] as String? ?? '',
+      badgeTypeId: badge['badge_type_id'] as int? ?? 0,
+    );
+  }
+}
+
 /// 帖子回应（Reaction）
 class PostReaction {
   final String id;  // emoji 名称，如 "heart", "distorted_face"
@@ -397,6 +429,9 @@ class Post {
   final String? flairColor;
   final int? flairGroupId;
 
+  // 用户主要群组
+  final String? primaryGroupName;
+
   // 被提及用户（含状态信息）
   final List<MentionedUser>? mentionedUsers;
 
@@ -408,6 +443,13 @@ class Post {
   // 删除状态
   final DateTime? deletedAt;       // 删除时间（不为空表示已删除）
   final bool userDeleted;          // 是否是用户自己删除的
+
+  // 用户头衔和状态
+  final String? userTitle;         // 用户头衔
+  final UserStatus? userStatus;    // 用户状态（emoji + 描述）
+
+  // 帖子头部徽章
+  final List<GrantedBadge>? badgesGranted; // 帖子头部显示的徽章
 
   Post({
     required this.id,
@@ -446,12 +488,16 @@ class Post {
     this.flairBgColor,
     this.flairColor,
     this.flairGroupId,
+    this.primaryGroupName,
     this.mentionedUsers,
     this.acceptedAnswer = false,
     this.canAcceptAnswer = false,
     this.canUnacceptAnswer = false,
     this.deletedAt,
     this.userDeleted = false,
+    this.userTitle,
+    this.userStatus,
+    this.badgesGranted,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -504,6 +550,7 @@ class Post {
       flairBgColor: json['flair_bg_color'] as String?,
       flairColor: json['flair_color'] as String?,
       flairGroupId: json['flair_group_id'] as int?,
+      primaryGroupName: json['primary_group_name'] as String?,
       mentionedUsers: (json['mentioned_users'] as List<dynamic>?)
           ?.map((e) => MentionedUser.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -514,6 +561,15 @@ class Post {
           ? TimeUtils.parseUtcTime(json['deleted_at'] as String)
           : null,
       userDeleted: json['user_deleted'] as bool? ?? false,
+      userTitle: (json['user_title'] as String?)?.isNotEmpty == true
+          ? json['user_title'] as String
+          : null,
+      userStatus: json['user_status'] != null
+          ? UserStatus.fromJson(json['user_status'] as Map<String, dynamic>)
+          : null,
+      badgesGranted: (json['badges_granted'] as List<dynamic>?)
+          ?.map((e) => GrantedBadge.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -567,12 +623,16 @@ class Post {
     String? flairBgColor,
     String? flairColor,
     int? flairGroupId,
+    String? primaryGroupName,
     List<MentionedUser>? mentionedUsers,
     bool? acceptedAnswer,
     bool? canAcceptAnswer,
     bool? canUnacceptAnswer,
     DateTime? deletedAt,
     bool? userDeleted,
+    String? userTitle,
+    UserStatus? userStatus,
+    List<GrantedBadge>? badgesGranted,
     bool clearCurrentUserReaction = false,
   }) {
     return Post(
@@ -612,12 +672,16 @@ class Post {
       flairBgColor: flairBgColor ?? this.flairBgColor,
       flairColor: flairColor ?? this.flairColor,
       flairGroupId: flairGroupId ?? this.flairGroupId,
+      primaryGroupName: primaryGroupName ?? this.primaryGroupName,
       mentionedUsers: mentionedUsers ?? this.mentionedUsers,
       acceptedAnswer: acceptedAnswer ?? this.acceptedAnswer,
       canAcceptAnswer: canAcceptAnswer ?? this.canAcceptAnswer,
       canUnacceptAnswer: canUnacceptAnswer ?? this.canUnacceptAnswer,
       deletedAt: deletedAt ?? this.deletedAt,
       userDeleted: userDeleted ?? this.userDeleted,
+      userTitle: userTitle ?? this.userTitle,
+      userStatus: userStatus ?? this.userStatus,
+      badgesGranted: badgesGranted ?? this.badgesGranted,
     );
   }
 }
@@ -638,6 +702,98 @@ class PostStream {
           .map((e) => e as int)
           .toList(),
     );
+  }
+
+  /// 从顶层 JSON 解析 users/badges 数据，注入到 posts 中
+  /// [topLevelJson] 是包含 users、badges 字段的顶层响应 JSON
+  static void injectBadges(List<Post> posts, Map<String, dynamic> topLevelJson, List<dynamic>? rawPosts) {
+    // badge 数据在 topLevelJson['user_badges'] 下，包含 users 和 badges 两个子字典
+    final userBadgesContainer = topLevelJson['user_badges'] as Map<String, dynamic>?;
+    if (userBadgesContainer == null) return;
+
+    final badgesMap = <int, GrantedBadge>{};
+    final userBadgeIdsMap = <int, List<int>>{};
+
+    // 解析 badges（支持 Map 和 List 两种格式）
+    final badgesRaw = userBadgesContainer['badges'];
+    if (badgesRaw is Map<String, dynamic>) {
+      for (final entry in badgesRaw.entries) {
+        final badgeId = int.tryParse(entry.key);
+        if (badgeId != null && entry.value is Map<String, dynamic>) {
+          badgesMap[badgeId] = GrantedBadge.fromJson(entry.value as Map<String, dynamic>);
+        }
+      }
+    } else if (badgesRaw is List) {
+      for (final item in badgesRaw) {
+        if (item is Map<String, dynamic>) {
+          final badgeId = item['id'] as int?;
+          if (badgeId != null) {
+            badgesMap[badgeId] = GrantedBadge.fromJson(item);
+          }
+        }
+      }
+    }
+
+    // 解析 users（支持 Map 和 List 两种格式）
+    final usersRaw = userBadgesContainer['users'];
+    if (usersRaw is Map<String, dynamic>) {
+      for (final entry in usersRaw.entries) {
+        final userId = int.tryParse(entry.key);
+        if (userId != null && entry.value is Map<String, dynamic>) {
+          final badgeIds = (entry.value['badge_ids'] as List<dynamic>?)
+              ?.map((e) => e as int)
+              .toList();
+          if (badgeIds != null && badgeIds.isNotEmpty) {
+            userBadgeIdsMap[userId] = badgeIds;
+          }
+        }
+      }
+    } else if (usersRaw is List) {
+      for (final item in usersRaw) {
+        if (item is Map<String, dynamic>) {
+          final userId = item['id'] as int?;
+          final badgeIds = (item['badge_ids'] as List<dynamic>?)
+              ?.map((e) => e as int)
+              .toList();
+          if (userId != null && badgeIds != null && badgeIds.isNotEmpty) {
+            userBadgeIdsMap[userId] = badgeIds;
+          }
+        }
+      }
+    }
+
+    if (badgesMap.isEmpty || userBadgeIdsMap.isEmpty) return;
+
+    // 从原始 post JSON 中获取 user_id 映射
+    final postUserIdMap = <int, int>{};
+    if (rawPosts != null) {
+      for (final rawPost in rawPosts) {
+        if (rawPost is Map<String, dynamic>) {
+          final postId = rawPost['id'] as int?;
+          final userId = rawPost['user_id'] as int?;
+          if (postId != null && userId != null) {
+            postUserIdMap[postId] = userId;
+          }
+        }
+      }
+    }
+
+    for (int i = 0; i < posts.length; i++) {
+      final post = posts[i];
+      final userId = postUserIdMap[post.id];
+      if (userId != null) {
+        final badgeIds = userBadgeIdsMap[userId];
+        if (badgeIds != null) {
+          final badges = badgeIds
+              .map((id) => badgesMap[id])
+              .whereType<GrantedBadge>()
+              .toList();
+          if (badges.isNotEmpty) {
+            posts[i] = post.copyWith(badgesGranted: badges);
+          }
+        }
+      }
+    }
   }
 }
 
@@ -720,6 +876,10 @@ class TopicDetail {
 
   factory TopicDetail.fromJson(Map<String, dynamic> json) {
     final postStream = PostStream.fromJson(json['post_stream'] as Map<String, dynamic>);
+
+    // 注入 topic 级别的 badges 数据到每个 post
+    final rawPosts = (json['post_stream'] as Map<String, dynamic>)['posts'] as List<dynamic>?;
+    PostStream.injectBadges(postStream.posts, json, rawPosts);
 
     // 解析 accepted_answer：topic 级别返回的是一个对象 {post_number, username, ...}
     final acceptedAnswerData = json['accepted_answer'];

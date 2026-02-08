@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../constants.dart';
@@ -15,9 +16,11 @@ import '../../services/discourse/discourse_service.dart';
 import '../../services/discourse_cache_manager.dart';
 import '../../services/emoji_handler.dart';
 import '../../utils/time_utils.dart';
+import '../../utils/font_awesome_helper.dart';
 import '../content/discourse_html_content/discourse_html_content.dart';
 import '../common/flair_badge.dart';
 import '../common/smart_avatar.dart';
+import '../common/avatar_glow.dart';
 import 'small_action_item.dart';
 import 'moderator_action_item.dart';
 import 'whisper_indicator.dart';
@@ -918,6 +921,19 @@ class _PostItemState extends ConsumerState<PostItem> {
                             maxLines: 1,
                           ),
                         ),
+                        // 用户状态 emoji
+                        if (post.userStatus?.emoji != null) ...[
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: post.userStatus!.description ?? '',
+                            child: Image(
+                              image: discourseImageProvider(_getEmojiUrl(post.userStatus!.emoji!)),
+                              width: 16,
+                              height: 16,
+                              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                            ),
+                          ),
+                        ],
                         if (widget.isTopicOwner && post.postNumber > 1) ...[
                           const SizedBox(width: 4),
                           _buildCompactBadge(context, '主', theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer),
@@ -932,19 +948,47 @@ class _PostItemState extends ConsumerState<PostItem> {
                         ],
                       ],
                     ),
-                    if (post.name != null && post.name!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          post.username,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontSize: 11,
+                    // @username + 用户头衔 + 帖子头部徽章（始终显示）
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        children: [
+                          Text(
+                            '@${post.username}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
+                          if (post.userTitle != null) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: () {
+                                final titleBuilder = AppConstants.siteCustomization.matchTitleStyle(post);
+                                return titleBuilder != null
+                                    ? titleBuilder(post.userTitle!, 11)
+                                    : Text(
+                                        post.userTitle!,
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                                          fontSize: 11,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      );
+                              }(),
+                            ),
+                          ],
+                          // 帖子头部徽章
+                          if (post.badgesGranted != null && post.badgesGranted!.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            ...post.badgesGranted!.map((badge) => _GrantedBadgeIcon(badge: badge)),
+                          ],
+                        ],
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -2039,30 +2083,37 @@ class _PostAvatarState extends State<_PostAvatar> {
   @override
   Widget build(BuildContext context) {
     final avatarUrl = widget.post.getAvatarUrl();
+    final glowColor = AppConstants.siteCustomization.matchAvatarGlow(widget.post);
+
+    Widget avatar = AvatarWithFlair(
+      flairSize: 17,
+      flairRight: -4,
+      flairBottom: -2,
+      flairUrl: widget.post.flairUrl,
+      flairName: widget.post.flairName,
+      flairBgColor: widget.post.flairBgColor,
+      flairColor: widget.post.flairColor,
+      avatar: SmartAvatar(
+        imageUrl: avatarUrl.isNotEmpty ? avatarUrl : null,
+        radius: 20,
+        fallbackText: widget.post.username,
+        border: Border.all(
+          color: widget.theme.colorScheme.outlineVariant,
+          width: 1,
+        ),
+      ),
+    );
+
+    if (glowColor != null) {
+      avatar = AvatarGlow(glowColor: glowColor, child: avatar);
+    }
 
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => UserProfilePage(username: widget.post.username)),
       ),
-      child: AvatarWithFlair(
-        flairSize: 17,
-        flairRight: -4,
-        flairBottom: -2,
-        flairUrl: widget.post.flairUrl,
-        flairName: widget.post.flairName,
-        flairBgColor: widget.post.flairBgColor,
-        flairColor: widget.post.flairColor,
-        avatar: SmartAvatar(
-          imageUrl: avatarUrl.isNotEmpty ? avatarUrl : null,
-          radius: 20,
-          fallbackText: widget.post.username,
-          border: Border.all(
-            color: widget.theme.colorScheme.outlineVariant,
-            width: 1,
-          ),
-        ),
-      ),
+      child: avatar,
     );
   }
 }
@@ -2108,4 +2159,66 @@ class _StampPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 帖子头部徽章图标
+class _GrantedBadgeIcon extends StatelessWidget {
+  final GrantedBadge badge;
+
+  const _GrantedBadgeIcon({required this.badge});
+
+  /// 根据徽章类型获取颜色（1=Gold, 2=Silver, 3=Bronze）
+  Color _badgeTypeColor(ThemeData theme) {
+    switch (badge.badgeTypeId) {
+      case 1:
+        return const Color(0xFFE5A100);
+      case 2:
+        return const Color(0xFF9A9A9A);
+      case 3:
+        return const Color(0xFFCD7F32);
+      default:
+        return theme.colorScheme.onSurfaceVariant;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = _badgeTypeColor(theme);
+
+    // 优先使用图片
+    if (badge.imageUrl != null && badge.imageUrl!.isNotEmpty) {
+      final url = badge.imageUrl!.startsWith('http')
+          ? badge.imageUrl!
+          : '${AppConstants.baseUrl}${badge.imageUrl}';
+      return Tooltip(
+        message: badge.name,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: Image(
+            image: discourseImageProvider(url),
+            width: 14,
+            height: 14,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+        ),
+      );
+    }
+
+    // 使用 FontAwesome 图标
+    if (badge.icon != null && badge.icon!.isNotEmpty) {
+      final iconData = FontAwesomeHelper.getIcon(badge.icon!);
+      if (iconData != null) {
+        return Tooltip(
+          message: badge.name,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 2),
+            child: FaIcon(iconData, size: 12, color: color),
+          ),
+        );
+      }
+    }
+
+    return const SizedBox.shrink();
+  }
 }

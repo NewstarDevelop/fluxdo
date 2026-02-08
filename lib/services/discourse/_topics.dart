@@ -127,10 +127,13 @@ mixin _TopicsMixin on _DiscourseServiceBase {
       },
     );
     final data = response.data as Map<String, dynamic>;
-    if (data.containsKey('post_stream')) {
-      return PostStream.fromJson(data['post_stream'] as Map<String, dynamic>);
-    }
-    return PostStream.fromJson(data);
+    final streamJson = data.containsKey('post_stream')
+        ? data['post_stream'] as Map<String, dynamic>
+        : data;
+    final postStream = PostStream.fromJson(streamJson);
+    // 注入 topic 级别的 badges 数据
+    PostStream.injectBadges(postStream.posts, data, streamJson['posts'] as List<dynamic>?);
+    return postStream;
   }
 
   /// 按帖子编号获取帖子
@@ -143,10 +146,13 @@ mixin _TopicsMixin on _DiscourseServiceBase {
       },
     );
     final data = response.data as Map<String, dynamic>;
-    if (data.containsKey('post_stream')) {
-      return PostStream.fromJson(data['post_stream'] as Map<String, dynamic>);
-    }
-    return PostStream.fromJson(data);
+    final streamJson = data.containsKey('post_stream')
+        ? data['post_stream'] as Map<String, dynamic>
+        : data;
+    final postStream = PostStream.fromJson(streamJson);
+    // 注入 topic 级别的 badges 数据
+    PostStream.injectBadges(postStream.posts, data, streamJson['posts'] as List<dynamic>?);
+    return postStream;
   }
 
   Future<TopicListResponse> getTopTopics() async {

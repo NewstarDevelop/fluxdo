@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'config/site_customization.dart';
+import 'config/sites/linuxdo.dart';
 
 /// 应用常量
 class AppConstants {
+  /// 当前站点自定义配置
+  static final SiteCustomization siteCustomization = linuxdoCustomization;
   /// 是否启用 WebView Cookie 同步（启动时预热 WebView）
   /// 设为 false 时，不使用 WebView 同步，Cookie 由 Dio Set-Cookie 与本地存储维护
   static const bool enableWebViewCookieSync = false;
