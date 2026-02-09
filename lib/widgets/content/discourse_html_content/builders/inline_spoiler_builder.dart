@@ -45,9 +45,10 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
   Duration _lastElapsed = Duration.zero;
 
   // Spoiler 组（每组可能包含多行）
-  final List<_SpoilerGroup> _groups = [];
+  List<_SpoilerGroup> _groups = [];
 
   bool _hasScanned = false;
+  bool _needsRescan = false;
   int _scanDelayCounter = 0;
 
   @override
@@ -60,11 +61,13 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
     final dtMs = (elapsed - _lastElapsed).inMilliseconds.toDouble();
     _lastElapsed = elapsed;
 
-    if (!_hasScanned) {
+    if (!_hasScanned || _needsRescan) {
       _scanDelayCounter++;
-      if (_scanDelayCounter >= 5) {
+      // 等待 2 帧确保 RenderTree 完成布局
+      if (_scanDelayCounter >= 2) {
         _scanForSpoilers();
         _hasScanned = true;
+        _needsRescan = false;
       }
     }
 
@@ -86,7 +89,8 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
   void didUpdateWidget(SpoilerOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.child != widget.child) {
-      _hasScanned = false;
+      // 标记需要重新扫描，但不清空旧数据，避免闪烁
+      _needsRescan = true;
       _scanDelayCounter = 0;
     }
   }
@@ -98,8 +102,6 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
   }
 
   void _scanForSpoilers() {
-    _groups.clear();
-
     final renderObject = context.findRenderObject();
     if (renderObject == null) return;
 
@@ -108,16 +110,19 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
     _visitRenderObject(renderObject, Offset.zero, tempRects);
 
     // 将相邻的区域合并为组（同一个 spoiler 可能跨多行）
-    _groupRects(tempRects);
+    final newGroups = _buildGroups(tempRects);
 
     // 初始化粒子并标记已揭示的组
-    for (final group in _groups) {
+    for (final group in newGroups) {
       if (widget.revealedSpoilers.contains(group.id)) {
         group.isRevealed = true;
       } else {
         group.particleSystem.initForRects(group.rects.map((r) => r.rect).toList());
       }
     }
+
+    // 扫描完成后一次性替换，避免闪烁
+    _groups = newGroups;
   }
 
   void _visitRenderObject(RenderObject renderObject, Offset parentOffset, List<_TempRect> tempRects) {
@@ -250,7 +255,7 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
   }
 
   /// 将临时区域按 groupId 分组，并归一化同行高度
-  void _groupRects(List<_TempRect> tempRects) {
+  List<_SpoilerGroup> _buildGroups(List<_TempRect> tempRects) {
     final Map<String, List<_SpoilerRect>> groupMap = {};
 
     for (final temp in tempRects) {
@@ -259,14 +264,16 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
       );
     }
 
+    final groups = <_SpoilerGroup>[];
     for (final entry in groupMap.entries) {
       // 对同一 group 内的 rects 进行同行高度归一化
       final normalizedRects = _normalizeRowHeights(entry.value);
-      _groups.add(_SpoilerGroup(
+      groups.add(_SpoilerGroup(
         id: entry.key,
         rects: normalizedRects,
       ));
     }
+    return groups;
   }
 
   /// 归一化同行的 rect 高度

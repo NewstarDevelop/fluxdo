@@ -73,30 +73,35 @@ class InlineDecoratorOverlay extends StatefulWidget {
 
 class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
   // 内联代码组列表（每组是一个 code 元素的多行矩形）
-  final List<List<Rect>> _codeGroups = [];
+  List<List<Rect>> _codeGroups = [];
   bool _hasScanned = false;
+  bool _needsRescan = false;
 
   @override
   void didUpdateWidget(InlineDecoratorOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.child != widget.child) {
-      _hasScanned = false;
-      _codeGroups.clear();
+      // 标记需要重新扫描，但不清空旧数据，避免闪烁
+      _needsRescan = true;
     }
   }
 
   void _scanForCodeRects() {
-    _codeGroups.clear();
+    // 先扫描到临时列表，扫描完成后再替换，避免闪烁
+    final newGroups = <List<Rect>>[];
 
     final renderObject = context.findRenderObject();
     if (renderObject == null) return;
 
-    _visitRenderObject(renderObject, Offset.zero);
+    _visitRenderObject(renderObject, Offset.zero, newGroups);
+
+    // 扫描完成后一次性替换
+    _codeGroups = newGroups;
   }
 
-  void _visitRenderObject(RenderObject renderObject, Offset parentOffset) {
+  void _visitRenderObject(RenderObject renderObject, Offset parentOffset, List<List<Rect>> groups) {
     if (renderObject is RenderParagraph) {
-      _extractCodeRects(renderObject, parentOffset);
+      _extractCodeRects(renderObject, parentOffset, groups);
     }
 
     renderObject.visitChildren((child) {
@@ -107,13 +112,13 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
           childOffset = parentOffset + parentData.offset;
         }
       }
-      _visitRenderObject(child, childOffset);
+      _visitRenderObject(child, childOffset, groups);
     });
   }
 
-  void _extractCodeRects(RenderParagraph paragraph, Offset offset) {
+  void _extractCodeRects(RenderParagraph paragraph, Offset offset, List<List<Rect>> groups) {
     final text = paragraph.text;
-    _visitInlineSpan(text, paragraph, offset, 0, null);
+    _visitInlineSpan(text, paragraph, offset, 0, null, groups);
   }
 
   int _visitInlineSpan(
@@ -122,6 +127,7 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
     Offset offset,
     int charIndex,
     TextStyle? parentStyle,
+    List<List<Rect>> groups,
   ) {
     if (span is TextSpan) {
       final effectiveStyle = parentStyle?.merge(span.style) ?? span.style;
@@ -150,7 +156,7 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
             }
           }
           if (rects.isNotEmpty) {
-            _codeGroups.add(rects);
+            groups.add(rects);
           }
         } catch (e) {
           // 忽略错误
@@ -161,7 +167,7 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
 
       if (span.children != null) {
         for (final child in span.children!) {
-          charIndex = _visitInlineSpan(child, paragraph, offset, charIndex, effectiveStyle);
+          charIndex = _visitInlineSpan(child, paragraph, offset, charIndex, effectiveStyle, groups);
         }
       }
     } else if (span is WidgetSpan) {
@@ -179,14 +185,23 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
     return Stack(
       children: [
         // 背景层在下面（ClipRect 防止溢出）
+        // 使用 AnimatedOpacity 平滑过渡，避免闪烁
         if (_codeGroups.isNotEmpty)
           Positioned.fill(
             child: IgnorePointer(
               child: ClipRect(
-                child: CustomPaint(
-                  painter: _InlineCodePainter(
-                    groups: _codeGroups,
-                    isDark: isDark,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 150),
+                  builder: (context, opacity, child) => Opacity(
+                    opacity: opacity,
+                    child: child,
+                  ),
+                  child: CustomPaint(
+                    painter: _InlineCodePainter(
+                      groups: _codeGroups,
+                      isDark: isDark,
+                    ),
                   ),
                 ),
               ),
@@ -207,12 +222,13 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
           child: SizeChangedLayoutNotifier(
             child: Builder(
               builder: (context) {
-                // 首次构建后延迟扫描
-                if (!_hasScanned) {
+                // 首次构建或需要重新扫描时延迟扫描
+                if (!_hasScanned || _needsRescan) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) {
                       _scanForCodeRects();
                       _hasScanned = true;
+                      _needsRescan = false;
                       setState(() {});
                     }
                   });
@@ -231,11 +247,13 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
 class _InlineCodePainter extends CustomPainter {
   final List<List<Rect>> groups;
   final bool isDark;
+  // 缓存 groups 的 hashCode 用于比较
+  final int _groupsHash;
 
   _InlineCodePainter({
     required this.groups,
     required this.isDark,
-  });
+  }) : _groupsHash = Object.hashAll(groups.map((g) => Object.hashAll(g)));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -299,5 +317,7 @@ class _InlineCodePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_InlineCodePainter oldDelegate) => true;
+  bool shouldRepaint(_InlineCodePainter oldDelegate) {
+    return isDark != oldDelegate.isDark || _groupsHash != oldDelegate._groupsHash;
+  }
 }
