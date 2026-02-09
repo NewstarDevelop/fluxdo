@@ -81,12 +81,20 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
             showSearchFilterPanel(context, ref, SearchInType.bookmarks),
         searchHint: '在书签中搜索...',
       ),
-      body: searchState.isSearchMode
-          ? const UserContentSearchView(
+      body: Stack(
+        children: [
+          // 使用 Offstage 保持列表存在但在搜索模式下隐藏，保留滚动位置
+          Offstage(
+            offstage: searchState.isSearchMode,
+            child: _buildTopicList(bookmarksAsync),
+          ),
+          if (searchState.isSearchMode)
+            const UserContentSearchView(
               inType: SearchInType.bookmarks,
               emptySearchHint: '输入关键词搜索书签',
-            )
-          : _buildTopicList(bookmarksAsync),
+            ),
+        ],
+      ),
     );
   }
 

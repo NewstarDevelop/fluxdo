@@ -424,7 +424,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     required bool shouldShowTitle,
     required double expandProgress,
   }) {
-    if (detail == null || !shouldShowTitle) {
+    if (detail == null) {
       return [];
     }
 
@@ -434,73 +434,61 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
 
     return [
       // 搜索按钮
-      IgnorePointer(
-        ignoring: expandProgress > 0.0,
-        child: Opacity(
-          opacity: (1.0 - expandProgress).clamp(0.0, 1.0),
-          child: IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: '搜索本话题',
-            onPressed: () {
-              ref.read(topicSearchProvider(widget.topicId).notifier).enterSearchMode();
-            },
-          ),
-        ),
+      IconButton(
+        icon: const Icon(Icons.search),
+        tooltip: '搜索本话题',
+        onPressed: () {
+          ref.read(topicSearchProvider(widget.topicId).notifier).enterSearchMode();
+        },
       ),
       // 更多选项
-      IgnorePointer(
-        ignoring: expandProgress > 0.0,
-        child: Opacity(
-          opacity: (1.0 - expandProgress).clamp(0.0, 1.0),
-          child: PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            tooltip: '更多选项',
-            onSelected: (value) {
-              if (value == 'subscribe') {
-                showNotificationLevelSheet(
-                  context,
-                  detail.notificationLevel,
-                  (level) => _handleNotificationLevelChanged(notifier, level),
-                );
-              } else if (value == 'edit_topic') {
-                _handleEditTopic();
-              }
-            },
-            itemBuilder: (context) => [
-              if (canEditTopic)
-                PopupMenuItem(
-                  value: 'edit_topic',
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.edit_outlined,
-                        size: 20,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                      const SizedBox(width: 12),
-                      const Text('编辑话题'),
-                    ],
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert),
+        tooltip: '更多选项',
+        onSelected: (value) {
+          if (value == 'subscribe') {
+            showNotificationLevelSheet(
+              context,
+              detail.notificationLevel,
+              (level) => _handleNotificationLevelChanged(notifier, level),
+            );
+          } else if (value == 'edit_topic') {
+            _handleEditTopic();
+          }
+        },
+        itemBuilder: (context) => [
+          if (canEditTopic)
+            PopupMenuItem(
+              value: 'edit_topic',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.edit_outlined,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
-                ),
-              PopupMenuItem(
-                value: 'subscribe',
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      TopicNotificationButton.getIcon(detail.notificationLevel),
-                      size: 20,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                    const SizedBox(width: 12),
-                    const Text('订阅设置'),
-                  ],
-                ),
+                  const SizedBox(width: 12),
+                  const Text('编辑话题'),
+                ],
               ),
-            ],
+            ),
+          PopupMenuItem(
+            value: 'subscribe',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  TopicNotificationButton.getIcon(detail.notificationLevel),
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+                const SizedBox(width: 12),
+                const Text('订阅设置'),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     ];
   }
@@ -620,19 +608,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   ) {
     final params = _params;
     final searchState = ref.watch(topicSearchProvider(widget.topicId));
-
-    // 搜索模式下显示搜索视图
-    if (searchState.isSearchMode) {
-      return TopicSearchView(
-        topicId: widget.topicId,
-        onJumpToPost: (postNumber) {
-          // 退出搜索模式并跳转到指定帖子
-          ref.read(topicSearchProvider(widget.topicId).notifier).exitSearchMode();
-          _searchController.clear();
-          _scrollToPost(postNumber);
-        },
-      );
-    }
+    final isSearchMode = searchState.isSearchMode;
 
     // 初始加载或切换模式时显示骨架屏
     // 注意：当 hasError 为 true 时，即使 isLoading 也为 true（AsyncLoading.copyWithPrevious 语义），
@@ -680,11 +656,27 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     // Stack 组装
     return Stack(
         children: [
-          content,
-          
+          // 使用 Offstage 保持帖子列表存在但在搜索模式下隐藏，保留滚动位置
+          Offstage(
+            offstage: isSearchMode,
+            child: content,
+          ),
+
+          // 搜索视图
+          if (isSearchMode)
+            TopicSearchView(
+              topicId: widget.topicId,
+              onJumpToPost: (postNumber) {
+                // 退出搜索模式并跳转到指定帖子
+                ref.read(topicSearchProvider(widget.topicId).notifier).exitSearchMode();
+                _searchController.clear();
+                _scrollToPost(postNumber);
+              },
+            ),
+
           // TopicDetailOverlay (Bottom Bar)
           // 使用 ValueListenableBuilder 隔离状态变化，避免整页重建
-          if (detail != null)
+          if (detail != null && !isSearchMode)
             ValueListenableBuilder<bool>(
               valueListenable: _controller.showBottomBarNotifier,
               builder: (context, showBottomBar, _) {
@@ -717,10 +709,11 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
             ),
 
           // Expanded Header 相关组件（使用 ValueListenableBuilder 隔离状态变化）
-          ValueListenableBuilder<bool>(
-            valueListenable: _isOverlayVisibleNotifier,
-            builder: (context, isOverlayVisible, _) {
-              if (!isOverlayVisible) return const SizedBox.shrink();
+          if (!isSearchMode)
+            ValueListenableBuilder<bool>(
+              valueListenable: _isOverlayVisibleNotifier,
+              builder: (context, isOverlayVisible, _) {
+                if (!isOverlayVisible) return const SizedBox.shrink();
 
               return Stack(
                 children: [

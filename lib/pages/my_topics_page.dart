@@ -81,12 +81,20 @@ class _MyTopicsPageState extends ConsumerState<MyTopicsPage> {
             showSearchFilterPanel(context, ref, SearchInType.created),
         searchHint: '在我的话题中搜索...',
       ),
-      body: searchState.isSearchMode
-          ? const UserContentSearchView(
+      body: Stack(
+        children: [
+          // 使用 Offstage 保持列表存在但在搜索模式下隐藏，保留滚动位置
+          Offstage(
+            offstage: searchState.isSearchMode,
+            child: _buildTopicList(myTopicsAsync),
+          ),
+          if (searchState.isSearchMode)
+            const UserContentSearchView(
               inType: SearchInType.created,
               emptySearchHint: '输入关键词搜索我的话题',
-            )
-          : _buildTopicList(myTopicsAsync),
+            ),
+        ],
+      ),
     );
   }
 
