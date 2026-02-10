@@ -1,6 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pasteboard/pasteboard.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 import '../../services/discourse/discourse_service.dart';
 import 'emoji_picker.dart';
@@ -34,6 +40,9 @@ class MarkdownToolbar extends StatefulWidget {
   /// 表情面板高度
   final double emojiPanelHeight;
 
+  /// 表情面板状态变化回调
+  final ValueChanged<bool>? onEmojiPanelChanged;
+
   const MarkdownToolbar({
     super.key,
     required this.controller,
@@ -44,6 +53,7 @@ class MarkdownToolbar extends StatefulWidget {
     this.onApplyPangu,
     this.showPanguButton = false,
     this.emojiPanelHeight = 280.0,
+    this.onEmojiPanelChanged,
   });
 
   @override
@@ -61,12 +71,55 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_handleRawKeyEvent);
   }
-  
+
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleRawKeyEvent);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// 全局键盘事件处理，检测 Cmd+V / Ctrl+V 粘贴图片
+  bool _handleRawKeyEvent(KeyEvent event) {
+    if (widget.focusNode == null || !widget.focusNode!.hasFocus) return false;
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyV &&
+        !HardwareKeyboard.instance.isShiftPressed &&
+        !HardwareKeyboard.instance.isAltPressed &&
+        (HardwareKeyboard.instance.isMetaPressed ||
+            HardwareKeyboard.instance.isControlPressed)) {
+      _handlePaste();
+      return true;
+    }
+    return false;
+  }
+
+  /// 处理粘贴事件：优先检测剪贴板图片，否则粘贴文本
+  Future<void> _handlePaste() async {
+    try {
+      final imageBytes = await Pasteboard.image;
+      if (imageBytes != null && imageBytes.isNotEmpty) {
+        // 有图片，保存到临时文件后走上传流程
+        final tempDir = await getTemporaryDirectory();
+        final fileName = 'paste_${DateTime.now().millisecondsSinceEpoch}.png';
+        final tempFile = File(p.join(tempDir.path, fileName));
+        await tempFile.writeAsBytes(imageBytes);
+
+        if (!mounted) return;
+        await uploadImageFromPath(imagePath: tempFile.path, imageName: fileName);
+        return;
+      }
+    } catch (_) {
+      // 读取图片失败，回退到文本粘贴
+    }
+
+    // 无图片，粘贴文本
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    if (clipboardData?.text != null) {
+      insertText(clipboardData!.text!);
+    }
   }
   
   @override
@@ -89,6 +142,7 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
   void closeEmojiPanel() {
     if (_showEmojiPanel) {
       setState(() => _showEmojiPanel = false);
+      widget.onEmojiPanelChanged?.call(false);
     }
   }
   
@@ -516,27 +570,44 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
   }
 
   void _toggleEmojiPanel() {
+    final wasShowing = _showEmojiPanel;
+    final hasKeyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (!wasShowing) {
+      widget.onEmojiPanelChanged?.call(true);
+    }
     setState(() {
       _showEmojiPanel = !_showEmojiPanel;
-      if (_showEmojiPanel) {
+      if (_showEmojiPanel && hasKeyboard) {
+        // 移动端：收起键盘，表情面板替代键盘
         FocusScope.of(context).unfocus();
-      } else {
-        widget.focusNode?.requestFocus();
       }
     });
+    if (!wasShowing && !hasKeyboard) {
+      // 桌面端：点击按钮会导致编辑器失焦，在下一帧恢复焦点保持光标闪烁
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _showEmojiPanel) {
+          widget.focusNode?.requestFocus();
+        }
+      });
+    }
+    // 关闭时延迟恢复焦点，等收起动画结束后再弹键盘，避免布局跳动
+    if (wasShowing) {
+      widget.onEmojiPanelChanged?.call(false);
+      Future.delayed(const Duration(milliseconds: 220), () {
+        if (mounted) widget.focusNode?.requestFocus();
+      });
+    }
   }
 
-  Future<void> _pickAndUploadImage() async {
+  /// 从文件路径上传图片（公开方法，供外部调用）
+  Future<void> uploadImageFromPath({required String imagePath, required String imageName}) async {
     try {
-      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-      if (image == null) return;
-
       // 显示确认弹框
       if (!mounted) return;
       final result = await showImageUploadDialog(
         context,
-        imagePath: image.path,
-        imageName: image.name,
+        imagePath: imagePath,
+        imageName: imageName,
       );
       if (result == null) return; // 用户取消
 
@@ -554,6 +625,17 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
       if (mounted) {
         setState(() => _isUploading = false);
       }
+    }
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+
+      await uploadImageFromPath(imagePath: image.path, imageName: image.name);
+    } catch (_) {
+      // 错误已由 ErrorInterceptor 处理
     }
   }
 
@@ -582,8 +664,11 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 工具栏按钮行
-          Padding(
+          // 工具栏按钮行（禁止按钮抢走编辑器焦点）
+          Focus(
+            canRequestFocus: false,
+            descendantsAreFocusable: false,
+            child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
               children: [
@@ -712,25 +797,38 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
               ],
             ),
           ),
-          
-          // 表情面板 (使用 ClipRect 防止动画过程中溢出)
-          ClipRect(
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              child: SizedBox(
-                height: _showEmojiPanel ? effectiveEmojiHeight : 0,
-                child: _showEmojiPanel
-                    ? EmojiPicker(
-                        onEmojiSelected: (emoji) {
-                          insertText(':${emoji.name}:');
-                          // 保持表情面板打开，不弹出键盘
+          ),
+
+          // 表情面板
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            height: _showEmojiPanel ? effectiveEmojiHeight : 0,
+            clipBehavior: Clip.hardEdge,
+            decoration: const BoxDecoration(),
+            child: _showEmojiPanel
+                ? Focus(
+                    // 防止表情面板内的 TabBar/GridView 等组件抢走编辑器焦点
+                    canRequestFocus: false,
+                    descendantsAreFocusable: false,
+                    child: EmojiPicker(
+                      onEmojiSelected: (emoji) {
+                        insertText(':${emoji.name}:');
+                        if (MediaQuery.viewInsetsOf(context).bottom > 0) {
+                          // 移动端：unfocus 防止键盘弹出
                           FocusScope.of(context).unfocus();
-                        },
-                      )
-                    : null,
-              ),
-            ),
+                        } else {
+                          // 桌面端：点击表情会失焦，恢复焦点保持光标
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted && _showEmojiPanel) {
+                              widget.focusNode?.requestFocus();
+                            }
+                          });
+                        }
+                      },
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),

@@ -13,27 +13,38 @@ import 'package:pangutext/pangutext.dart';
 class MarkdownEditor extends ConsumerStatefulWidget {
   /// 内容控制器（必需）
   final TextEditingController controller;
-  
+
   /// 焦点节点（可选，不传则内部创建）
   final FocusNode? focusNode;
-  
+
   /// 提示文本
   final String hintText;
-  
+
   /// 最小行数（仅当 expands 为 false 时生效）
   final int minLines;
-  
+
   /// 是否扩展填满可用空间
   final bool expands;
-  
+
   /// 表情面板高度
   final double emojiPanelHeight;
-  
+
   /// 表情面板状态变化回调
   final ValueChanged<bool>? onEmojiPanelChanged;
 
   /// 用户提及数据源（可选，不传则不启用 @用户 功能）
   final MentionDataSource? mentionDataSource;
+
+  /// 是否显示预览按钮
+  final bool showPreviewButton;
+
+  /// 外部预览切换回调（可选）
+  /// 提供时，预览按钮将调用此回调而非内部预览切换，
+  /// 同时应配合 [isPreview] 传入当前预览状态
+  final VoidCallback? onTogglePreview;
+
+  /// 外部预览状态（可选，配合 [onTogglePreview] 使用）
+  final bool? isPreview;
 
   const MarkdownEditor({
     super.key,
@@ -45,6 +56,9 @@ class MarkdownEditor extends ConsumerStatefulWidget {
     this.emojiPanelHeight = 280.0,
     this.onEmojiPanelChanged,
     this.mentionDataSource,
+    this.showPreviewButton = true,
+    this.onTogglePreview,
+    this.isPreview,
   });
 
   @override
@@ -56,6 +70,7 @@ class MarkdownEditorState extends ConsumerState<MarkdownEditor> {
   bool _ownsFocusNode = false;
 
   final _toolbarKey = GlobalKey<MarkdownToolbarState>();
+  final _scrollController = ScrollController();
   final _pangu = Pangu();
   bool _isApplyingPangu = false;
 
@@ -79,6 +94,7 @@ class MarkdownEditorState extends ConsumerState<MarkdownEditor> {
   @override
   void dispose() {
     widget.controller.removeListener(_handleTextChange);
+    _scrollController.dispose();
     if (_ownsFocusNode) {
       _focusNode.dispose();
     }
@@ -221,31 +237,60 @@ class MarkdownEditorState extends ConsumerState<MarkdownEditor> {
 
     _previousText = currentText;
   }
-  
+
+  /// 当前是否处于预览模式（优先使用外部状态）
+  bool get _isPreview => widget.isPreview ?? _showPreview;
+
   void _togglePreview() {
-    setState(() {
-      _showPreview = !_showPreview;
-      if (_showPreview) {
-        FocusScope.of(context).unfocus();
-        _toolbarKey.currentState?.closeEmojiPanel();
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _focusNode.requestFocus();
-        });
-      }
-    });
+    if (widget.onTogglePreview != null) {
+      // 外部控制预览
+      widget.onTogglePreview!();
+    } else {
+      // 内部控制预览
+      setState(() {
+        _showPreview = !_showPreview;
+        if (_showPreview) {
+          FocusScope.of(context).unfocus();
+          _toolbarKey.currentState?.closeEmojiPanel();
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _focusNode.requestFocus();
+          });
+        }
+      });
+    }
   }
-  
+
   /// 关闭表情面板（供外部调用）
   void closeEmojiPanel() {
     _toolbarKey.currentState?.closeEmojiPanel();
   }
-  
+
+  /// 表情面板状态变化处理
+  void _handleEmojiPanelChanged(bool isOpen) {
+    if (isOpen) {
+      // 动画结束后确保光标可见（编辑器缩小后光标可能在视野外）
+      Future.delayed(const Duration(milliseconds: 260), () {
+        _ensureCursorVisible();
+      });
+    }
+    widget.onEmojiPanelChanged?.call(isOpen);
+  }
+
+  /// 通过重新触发焦点让 Flutter 自动滚动到光标位置
+  void _ensureCursorVisible() {
+    if (!mounted || !_focusNode.hasFocus) return;
+    _focusNode.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
   /// 请求焦点
   void requestFocus() {
     _focusNode.requestFocus();
   }
-  
+
   /// 当前是否显示表情面板
   bool get showEmojiPanel => _toolbarKey.currentState?.showEmojiPanel ?? false;
 
@@ -280,6 +325,7 @@ class MarkdownEditorState extends ConsumerState<MarkdownEditor> {
     final textField = TextField(
       controller: widget.controller,
       focusNode: _focusNode,
+      scrollController: _scrollController,
       maxLines: null,
       minLines: widget.expands ? null : widget.minLines,
       expands: widget.expands,
@@ -310,12 +356,12 @@ class MarkdownEditorState extends ConsumerState<MarkdownEditor> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Column(
       children: [
         // 编辑/预览区域
         Expanded(
-          child: _showPreview
+          child: _isPreview && widget.onTogglePreview == null
               ? SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: widget.controller.text.isEmpty
@@ -330,17 +376,19 @@ class MarkdownEditorState extends ConsumerState<MarkdownEditor> {
                   child: _buildTextEditor(),
                 ),
         ),
-        
+
         // 工具栏
         MarkdownToolbar(
           key: _toolbarKey,
           controller: widget.controller,
           focusNode: _focusNode,
-          isPreview: _showPreview,
+          showPreviewButton: widget.showPreviewButton,
+          isPreview: _isPreview,
           onTogglePreview: _togglePreview,
           onApplyPangu: _applyPanguSpacing,
           showPanguButton: true,
           emojiPanelHeight: widget.emojiPanelHeight,
+          onEmojiPanelChanged: _handleEmojiPanelChanged,
         ),
       ],
     );
