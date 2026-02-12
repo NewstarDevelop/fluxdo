@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,6 +50,16 @@ const _tabRowHeight = 36.0;
 const _sortBarHeight = 44.0;
 const _collapsibleHeight = _searchBarHeight + _sortBarHeight; // 100
 
+/// 暴露 forcePixels 用于 snap 动画的扩展。
+/// 使用 forcePixels 而非 animateTo，避免触发 NestedScrollView coordinator
+/// 的 beginActivity/goIdle 导致内部列表位置重置。
+extension _ScrollPositionForcePixels on ScrollPosition {
+  void snapToPixels(double value) {
+    // ignore: invalid_use_of_protected_member
+    forcePixels(value);
+  }
+}
+
 // ─── TopicsPage ───
 
 /// 帖子列表页面 - 分类 Tab + 排序下拉 + 标签 Chips
@@ -66,6 +77,9 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
   final Map<int?, GlobalKey<_TopicListState>> _listKeys = {};
 
   final ScrollController _outerScrollController = ScrollController();
+  Timer? _snapTimer;
+  AnimationController? _snapAnim;
+  bool _isSnapping = false;
 
   @override
   void initState() {
@@ -74,10 +88,14 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     _tabLength = 1 + pinnedIds.length;
     _tabController = TabController(length: _tabLength, vsync: this);
     _tabController.addListener(_handleTabChange);
+    _outerScrollController.addListener(_scheduleSnap);
   }
 
   @override
   void dispose() {
+    _snapTimer?.cancel();
+    _snapAnim?.dispose();
+    _outerScrollController.removeListener(_scheduleSnap);
     _outerScrollController.dispose();
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
@@ -356,100 +374,130 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
       _getListKey(_currentCategoryId()).currentState?.scrollToTop();
     });
 
-    return NotificationListener<ScrollEndNotification>(
-      onNotification: (notification) {
-        if (notification.metrics.axis == Axis.vertical) {
-          _snapOuterScroll();
-        }
-        return false;
-      },
+    return Listener(
+      onPointerDown: (_) => _cancelSnap(),
       child: ExtendedNestedScrollView(
-        controller: _outerScrollController,
-        floatHeaderSlivers: true,
-        pinnedHeaderSliverHeightBuilder: () => topPadding + _tabRowHeight,
-        onlyOneScrollInBody: true,
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverPersistentHeader(
-            pinned: true,
-            floating: true,
-            delegate: _TopicsHeaderDelegate(
-              statusBarHeight: topPadding,
-              tabController: _tabController,
-              pinnedIds: pinnedIds,
-              categoryMap: categoryMapAsync.value ?? {},
-              isLoggedIn: isLoggedIn,
-              currentSort: currentSort,
-              currentTags: currentTags,
-              currentCategory: currentCategory,
-              onSortChanged: (sort) {
-                ref.read(topicSortProvider.notifier).state = sort;
-              },
-              onTagRemoved: (tag) {
-                final tags = ref.read(tabTagsProvider(currentCategoryId));
-                ref.read(tabTagsProvider(currentCategoryId).notifier).state =
-                    tags.where((t) => t != tag).toList();
-              },
-              onAddTag: _openTagSelection,
-              onTabTap: (index) {
-                if (index == _currentTabIndex) {
-                  _getListKey(_currentCategoryId()).currentState?.scrollToTop();
+      controller: _outerScrollController,
+      floatHeaderSlivers: true,
+      pinnedHeaderSliverHeightBuilder: () => topPadding + _tabRowHeight,
+      onlyOneScrollInBody: true,
+      headerSliverBuilder: (context, innerBoxIsScrolled) => [
+        SliverPersistentHeader(
+          pinned: true,
+          floating: true,
+          delegate: _TopicsHeaderDelegate(
+            statusBarHeight: topPadding,
+            tabController: _tabController,
+            pinnedIds: pinnedIds,
+            categoryMap: categoryMapAsync.value ?? {},
+            isLoggedIn: isLoggedIn,
+            currentSort: currentSort,
+            currentTags: currentTags,
+            currentCategory: currentCategory,
+            onSortChanged: (sort) {
+              ref.read(topicSortProvider.notifier).state = sort;
+            },
+            onTagRemoved: (tag) {
+              final tags = ref.read(tabTagsProvider(currentCategoryId));
+              ref.read(tabTagsProvider(currentCategoryId).notifier).state =
+                  tags.where((t) => t != tag).toList();
+            },
+            onAddTag: _openTagSelection,
+            onTabTap: (index) {
+              if (index == _currentTabIndex) {
+                _getListKey(_currentCategoryId()).currentState?.scrollToTop();
+              }
+            },
+            onCategoryManager: _openCategoryManager,
+            onSearch: () {
+              SearchFilter? filter;
+              if (currentCategory != null) {
+                String? parentSlug;
+                if (currentCategory.parentCategoryId != null) {
+                  parentSlug = categoryMapAsync.value?[currentCategory.parentCategoryId]?.slug;
                 }
-              },
-              onCategoryManager: _openCategoryManager,
-              onSearch: () {
-                SearchFilter? filter;
-                if (currentCategory != null) {
-                  String? parentSlug;
-                  if (currentCategory.parentCategoryId != null) {
-                    parentSlug = categoryMapAsync.value?[currentCategory.parentCategoryId]?.slug;
-                  }
-                  filter = SearchFilter(
-                    categoryId: currentCategory.id,
-                    categorySlug: currentCategory.slug,
-                    categoryName: currentCategory.name,
-                    parentCategorySlug: parentSlug,
-                  );
-                }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => SearchPage(initialFilter: filter)),
+                filter = SearchFilter(
+                  categoryId: currentCategory.id,
+                  categorySlug: currentCategory.slug,
+                  categoryName: currentCategory.name,
+                  parentCategorySlug: parentSlug,
                 );
-              },
-              onDebugTopicId: () => _showTopicIdDialog(context),
-              trailing: _buildTrailing(currentCategory, isLoggedIn, currentSort),
-            ),
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => SearchPage(initialFilter: filter)),
+              );
+            },
+            onDebugTopicId: () => _showTopicIdDialog(context),
+            trailing: _buildTrailing(currentCategory, isLoggedIn, currentSort),
           ),
-        ],
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            ExtendedVisibilityDetector(
-              uniqueKey: const Key('tab_all'),
-              child: _buildTabPage(null),
-            ),
-            for (int i = 0; i < pinnedIds.length; i++)
-              ExtendedVisibilityDetector(
-                uniqueKey: Key('tab_${pinnedIds[i]}'),
-                child: _buildTabPage(pinnedIds[i]),
-              ),
-          ],
         ),
+      ],
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          ExtendedVisibilityDetector(
+            uniqueKey: const Key('tab_all'),
+            child: _buildTabPage(null),
+          ),
+          for (int i = 0; i < pinnedIds.length; i++)
+            ExtendedVisibilityDetector(
+              uniqueKey: Key('tab_${pinnedIds[i]}'),
+              child: _buildTabPage(pinnedIds[i]),
+            ),
+        ],
+      ),
       ),
     );
   }
 
-  /// 松手后根据阈值吸附到完全展开或完全折叠
+  /// outer scroll 位置变化时，重置定时器；
+  /// 位置停止变化 150ms 后触发 snap 判定。
+  void _scheduleSnap() {
+    if (_isSnapping) return; // snap 动画期间的 forcePixels 触发，忽略
+    _snapTimer?.cancel();
+    _snapTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) _snapOuterScroll();
+    });
+  }
+
+  /// 取消正在进行的 snap
+  void _cancelSnap() {
+    _snapTimer?.cancel();
+    if (_isSnapping) {
+      _snapAnim?.stop();
+      _isSnapping = false;
+    }
+  }
+
+  /// 松手后根据阈值吸附到完全展开或完全折叠。
+  /// 使用 forcePixels 直接更新像素值，不通过 animateTo，
+  /// 避免触发 coordinator 的 beginActivity/goIdle 导致内部列表位置重置。
   void _snapOuterScroll() {
     if (!_outerScrollController.hasClients) return;
     final offset = _outerScrollController.offset;
     if (offset <= 0 || offset >= _collapsibleHeight) return;
 
     final target = offset > _collapsibleHeight / 2 ? _collapsibleHeight : 0.0;
-    _outerScrollController.animateTo(
-      target,
+    final startOffset = offset;
+
+    _isSnapping = true;
+    _snapAnim?.dispose();
+    _snapAnim = AnimationController(
+      vsync: this,
       duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
     );
+
+    _snapAnim!.addListener(() {
+      if (!_outerScrollController.hasClients) return;
+      final t = Curves.easeOut.transform(_snapAnim!.value);
+      final newOffset = startOffset + (target - startOffset) * t;
+      _outerScrollController.position.snapToPixels(newOffset);
+    });
+
+    _snapAnim!.forward().whenComplete(() {
+      _isSnapping = false;
+    });
   }
 
   /// 构建单个 tab 页面（带水平间距，圆角裁剪在列表内部处理）
@@ -513,7 +561,17 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get minExtent => statusBarHeight + _tabRowHeight;
 
   @override
-  bool shouldRebuild(covariant _TopicsHeaderDelegate oldDelegate) => true;
+  bool shouldRebuild(covariant _TopicsHeaderDelegate oldDelegate) {
+    return statusBarHeight != oldDelegate.statusBarHeight ||
+        tabController != oldDelegate.tabController ||
+        pinnedIds != oldDelegate.pinnedIds ||
+        categoryMap != oldDelegate.categoryMap ||
+        isLoggedIn != oldDelegate.isLoggedIn ||
+        currentSort != oldDelegate.currentSort ||
+        currentTags != oldDelegate.currentTags ||
+        currentCategory != oldDelegate.currentCategory ||
+        trailing != oldDelegate.trailing;
+  }
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
@@ -523,12 +581,15 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
     final searchProgress = (clampedOffset / _searchBarHeight).clamp(0.0, 1.0);
     final sortProgress = ((clampedOffset - _searchBarHeight) / _sortBarHeight).clamp(0.0, 1.0);
 
-    // 更新 barVisibility
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final container = ProviderScope.containerOf(context, listen: false);
-      final visibility = (1.0 - clampedOffset / _collapsibleHeight).clamp(0.0, 1.0);
-      container.read(barVisibilityProvider.notifier).state = visibility;
-    });
+    // 更新 barVisibility（仅在值变化时才更新，避免快速滚动时的帧级联重建）
+    final visibility = (1.0 - clampedOffset / _collapsibleHeight).clamp(0.0, 1.0);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final current = container.read(barVisibilityProvider);
+    if ((visibility - current).abs() > 0.01) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        container.read(barVisibilityProvider.notifier).state = visibility;
+      });
+    }
 
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
 
@@ -538,28 +599,29 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
         children: [
           // 状态栏
           SizedBox(height: statusBarHeight),
-          // 搜索栏
-          ClipRect(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              heightFactor: 1.0 - searchProgress,
-              child: Opacity(
-                opacity: 1.0 - searchProgress,
-                child: SizedBox(
-                  height: _searchBarHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8, left: 16, right: 16, bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: onSearch,
-                            child: Container(
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
+          // 搜索栏（完全折叠后跳过子树构建）
+          if (searchProgress < 1.0)
+            ClipRect(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                heightFactor: 1.0 - searchProgress,
+                child: Opacity(
+                  opacity: 1.0 - searchProgress,
+                  child: SizedBox(
+                    height: _searchBarHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8, left: 16, right: 16, bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: onSearch,
+                              child: Container(
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               child: Row(
                                 children: [
@@ -637,27 +699,26 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
               ],
             ),
           ),
-          // 排序+标签栏
-          ClipRect(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              heightFactor: 1.0 - sortProgress,
-              child: sortProgress < 1.0
-                  ? Opacity(
-                      opacity: 1.0 - sortProgress,
-                      child: SortAndTagsBar(
-                        currentSort: currentSort,
-                        isLoggedIn: isLoggedIn,
-                        onSortChanged: onSortChanged,
-                        selectedTags: currentTags,
-                        onTagRemoved: onTagRemoved,
-                        onAddTag: onAddTag,
-                        trailing: trailing,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
+          // 排序+标签栏（完全折叠后跳过子树构建）
+          if (sortProgress < 1.0)
+            ClipRect(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                heightFactor: 1.0 - sortProgress,
+                child: Opacity(
+                  opacity: 1.0 - sortProgress,
+                  child: SortAndTagsBar(
+                    currentSort: currentSort,
+                    isLoggedIn: isLoggedIn,
+                    onSortChanged: onSortChanged,
+                    selectedTags: currentTags,
+                    onTagRemoved: onTagRemoved,
+                    onAddTag: onAddTag,
+                    trailing: trailing,
+                  ),
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -786,9 +847,10 @@ class _TopicListState extends ConsumerState<_TopicList>
           },
           child: ClipRRect(
             borderRadius: _topBorderRadius,
-            child: NotificationListener<ScrollNotification>(
+            child: NotificationListener<ScrollUpdateNotification>(
               onNotification: (notification) {
-                if (notification.metrics.pixels >= notification.metrics.maxScrollExtent - 200) {
+                if (notification.depth == 0 &&
+                    notification.metrics.pixels >= notification.metrics.maxScrollExtent - 200) {
                   ref.read(topicListProvider(providerKey).notifier).loadMore();
                 }
                 return false;
