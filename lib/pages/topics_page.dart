@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// ignore: depend_on_referenced_packages
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import '../models/topic.dart';
 import '../models/category.dart';
@@ -31,18 +29,28 @@ import '../widgets/common/error_view.dart';
 import '../widgets/common/loading_dialog.dart';
 import '../widgets/common/fading_edge_scroll_view.dart';
 
-class ScrollToTopNotifier extends StateNotifier<int> {
-  ScrollToTopNotifier() : super(0);
+class ScrollToTopNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
 
   void trigger() => state++;
 }
 
-final scrollToTopProvider = StateNotifierProvider<ScrollToTopNotifier, int>((ref) {
-  return ScrollToTopNotifier();
-});
+final scrollToTopProvider = NotifierProvider<ScrollToTopNotifier, int>(
+  ScrollToTopNotifier.new,
+);
 
 /// 顶栏/底栏可见性进度（0.0 = 完全隐藏, 1.0 = 完全显示）
-final barVisibilityProvider = StateProvider<double>((ref) => 1.0);
+class BarVisibilityNotifier extends Notifier<double> {
+  @override
+  double build() => 1.0;
+
+  void set(double value) => state = value;
+}
+
+final barVisibilityProvider = NotifierProvider<BarVisibilityNotifier, double>(
+  BarVisibilityNotifier.new,
+);
 
 /// Header 区域常量
 const _searchBarHeight = 56.0;
@@ -108,7 +116,7 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     setState(() {
       _currentTabIndex = _tabController.index;
     });
-    ref.read(currentTabCategoryIdProvider.notifier).state = _currentCategoryId();
+    ref.read(currentTabCategoryIdProvider.notifier).set(_currentCategoryId());
   }
 
   /// 检测 pinnedCategories 变化，重建 TabController
@@ -195,7 +203,7 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     );
   }
 
-  void _openCategoryManager() async {
+  Future<void> _openCategoryManager() async {
     final categoryId = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
@@ -237,7 +245,7 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     );
 
     if (result != null && mounted) {
-      ref.read(tabTagsProvider(categoryId).notifier).state = result;
+      ref.read(tabTagsProvider(categoryId).notifier).set(result);
     }
   }
 
@@ -285,10 +293,10 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
       onChanged: (newLevel) async {
         final oldLevel = effectiveLevel;
         // 乐观更新
-        ref.read(categoryNotificationOverridesProvider.notifier).state = {
+        ref.read(categoryNotificationOverridesProvider.notifier).set({
           ...ref.read(categoryNotificationOverridesProvider),
           category.id: newLevel.value,
-        };
+        });
         try {
           final service = ref.read(discourseServiceProvider);
           await service.setCategoryNotificationLevel(category.id, newLevel.value);
@@ -297,13 +305,14 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
           if (mounted) {
             final current = ref.read(categoryNotificationOverridesProvider);
             if (oldLevel != null) {
-              ref.read(categoryNotificationOverridesProvider.notifier).state = {
+              ref.read(categoryNotificationOverridesProvider.notifier).set({
                 ...current,
                 category.id: oldLevel,
-              };
+              });
             } else {
-              ref.read(categoryNotificationOverridesProvider.notifier).state =
-                  Map.from(current)..remove(category.id);
+              ref.read(categoryNotificationOverridesProvider.notifier).set(
+                  Map.from(current)..remove(category.id),
+              );
             }
           }
         }
@@ -395,12 +404,13 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
             currentTags: currentTags,
             currentCategory: currentCategory,
             onSortChanged: (sort) {
-              ref.read(topicSortProvider.notifier).state = sort;
+              ref.read(topicSortProvider.notifier).set(sort);
             },
             onTagRemoved: (tag) {
               final tags = ref.read(tabTagsProvider(currentCategoryId));
-              ref.read(tabTagsProvider(currentCategoryId).notifier).state =
-                  tags.where((t) => t != tag).toList();
+              ref.read(tabTagsProvider(currentCategoryId).notifier).set(
+                  tags.where((t) => t != tag).toList(),
+                );
             },
             onAddTag: _openTagSelection,
             onTabTap: (index) {
@@ -409,6 +419,14 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
               }
             },
             onCategoryManager: _openCategoryManager,
+            onRefresh: () {
+              final providerKey = (currentSort, currentCategoryId);
+              // ignore: unused_result
+              ref.refresh(topicListProvider(providerKey));
+              if (currentSort == TopicListFilter.latest) {
+                ref.read(latestChannelProvider.notifier).clearNewTopicsForCategory(currentCategoryId);
+              }
+            },
             onSearch: () {
               SearchFilter? filter;
               if (currentCategory != null) {
@@ -531,6 +549,7 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onAddTag;
   final ValueChanged<int> onTabTap;
   final VoidCallback onCategoryManager;
+  final VoidCallback onRefresh;
   final VoidCallback onSearch;
   final VoidCallback onDebugTopicId;
   final Widget? trailing;
@@ -549,6 +568,7 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onAddTag,
     required this.onTabTap,
     required this.onCategoryManager,
+    required this.onRefresh,
     required this.onSearch,
     required this.onDebugTopicId,
     this.trailing,
@@ -587,7 +607,7 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
     final current = container.read(barVisibilityProvider);
     if ((visibility - current).abs() > 0.01) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        container.read(barVisibilityProvider.notifier).state = visibility;
+        container.read(barVisibilityProvider.notifier).set(visibility);
       });
     }
 
@@ -686,6 +706,13 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
                       style: SortDropdownStyle.compact,
                     ),
                   ),
+                // 刷新按钮
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 20),
+                  onPressed: onRefresh,
+                  tooltip: '刷新',
+                  visualDensity: VisualDensity.compact,
+                ),
                 // 分类浏览按钮
                 Padding(
                   padding: const EdgeInsets.only(right: 8),

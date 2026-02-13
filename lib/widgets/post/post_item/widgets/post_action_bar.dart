@@ -159,6 +159,7 @@ class PostActionBar extends StatelessWidget {
                               image: discourseImageProvider(_getEmojiUrl(reaction.id)),
                               width: 16,
                               height: 16,
+                              errorBuilder: (_, _, _) => const SizedBox(width: 16, height: 16),
                             ),
                           )),
                           const SizedBox(width: 6),
@@ -184,6 +185,11 @@ class PostActionBar extends StatelessWidget {
                         image: discourseImageProvider(_getEmojiUrl(currentUserReaction!.id)),
                         width: 20,
                         height: 20,
+                        errorBuilder: (_, _, _) => Icon(
+                          Icons.favorite,
+                          size: 20,
+                          color: theme.colorScheme.primary,
+                        ),
                       )
                     else
                       Icon(

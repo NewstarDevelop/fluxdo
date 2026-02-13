@@ -28,6 +28,8 @@ import 'search_page.dart';
 import 'follow_list_page.dart';
 import 'image_viewer_page.dart';
 import 'badge_page.dart';
+import '../widgets/user/user_profile_summary_tab.dart';
+import '../widgets/user/user_profile_action_item.dart';
 
 /// 用户个人页
 class UserProfilePage extends ConsumerStatefulWidget {
@@ -1073,7 +1075,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
   Widget _buildActionList(String filter) {
     // 总结 tab
     if (filter == 'summary') {
-      return _buildSummaryTab();
+      return _summary == null
+          ? const UserActionListSkeleton()
+          : UserProfileSummaryTab(
+              summary: _summary!,
+              onUserTap: (username) => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => UserProfilePage(username: username)),
+              ),
+            );
     }
     // 回应列表使用单独的逻辑
     if (filter == 'reactions') {
@@ -1125,7 +1135,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
                 child: Center(child: CircularProgressIndicator()),
               );
             }
-            return _buildActionItem(actions[index]);
+            return UserActionItem(action: actions[index]);
           },
         ),
       ),
@@ -1645,7 +1655,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
                 child: Center(child: CircularProgressIndicator()),
               );
             }
-            return _buildReactionItem(reactions[index]);
+            return UserReactionItem(reaction: reactions[index]);
           },
         ),
       ),

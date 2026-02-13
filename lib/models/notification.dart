@@ -147,6 +147,26 @@ class DiscourseNotification {
     this.actingUserAvatarTemplate,
   });
 
+  DiscourseNotification copyWith({
+    bool? read,
+    bool? highPriority,
+  }) {
+    return DiscourseNotification(
+      id: id,
+      userId: userId,
+      notificationType: notificationType,
+      read: read ?? this.read,
+      highPriority: highPriority ?? this.highPriority,
+      createdAt: createdAt,
+      postNumber: postNumber,
+      topicId: topicId,
+      slug: slug,
+      data: data,
+      fancyTitle: fancyTitle,
+      actingUserAvatarTemplate: actingUserAvatarTemplate,
+    );
+  }
+
   factory DiscourseNotification.fromJson(Map<String, dynamic> json) {
     return DiscourseNotification(
       id: json['id'] as int,

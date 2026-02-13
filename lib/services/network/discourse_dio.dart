@@ -47,7 +47,7 @@ class DiscourseDio {
     dio.interceptors.add(RetryInterceptor(
       dio: dio,
       logPrint: (msg) => debugPrint('[Dio Retry] $msg'),
-      retries: 0, // TODO: 调试完成后改回 3
+      retries: 3,
       retryDelays: const [
         Duration(seconds: 1),
         Duration(seconds: 2),

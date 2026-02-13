@@ -179,7 +179,7 @@ class Topic {
   final DateTime? createdAt;
   final DateTime? lastPostedAt;
   final String? lastPosterUsername;
-  final String categoryId;
+  final int categoryId;
   final bool pinned;
   final bool visible;
   final bool closed;
@@ -239,7 +239,7 @@ class Topic {
       createdAt: TimeUtils.parseUtcTime(json['created_at'] as String?),
       lastPostedAt: TimeUtils.parseUtcTime(json['last_posted_at'] as String?),
       lastPosterUsername: json['last_poster_username'] as String?,
-      categoryId: (json['category_id'] ?? 0).toString(),
+      categoryId: json['category_id'] as int? ?? 0,
       pinned: json['pinned'] as bool? ?? false,
       visible: json['visible'] as bool? ?? true,
       closed: json['closed'] as bool? ?? false,

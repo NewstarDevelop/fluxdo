@@ -21,12 +21,12 @@ class AppStateRefresher {
 
   static Future<void> resetForLogout(WidgetRef ref) async {
     refreshAll(ref);
-    ref.read(topicSortProvider.notifier).state = TopicListFilter.latest;
+    ref.read(topicSortProvider.notifier).set(TopicListFilter.latest);
     // 清理各 tab 的标签筛选
     final pinnedIds = ref.read(pinnedCategoriesProvider);
-    ref.read(tabTagsProvider(null).notifier).state = [];
+    ref.read(tabTagsProvider(null).notifier).set([]);
     for (final id in pinnedIds) {
-      ref.read(tabTagsProvider(id).notifier).state = [];
+      ref.read(tabTagsProvider(id).notifier).set([]);
     }
     ref.read(activeCategorySlugsProvider.notifier).reset();
     await ref.read(ldcUserInfoProvider.notifier).disable();

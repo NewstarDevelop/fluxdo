@@ -26,6 +26,7 @@ import 'services/cf_challenge_logger.dart';
 import 'services/update_service.dart';
 import 'services/update_checker_helper.dart';
 import 'services/deep_link_service.dart';
+import 'services/discourse_cache_manager.dart';
 import 'models/user.dart';
 import 'constants.dart';
 
@@ -36,6 +37,22 @@ import 'widgets/preheat_gate.dart';
 import 'widgets/onboarding_gate.dart';
 import 'widgets/layout/adaptive_scaffold.dart';
 import 'widgets/layout/adaptive_navigation.dart';
+
+/// 一次性清理损坏的图片缓存
+/// WebView binary fix (v0.1.23) 之前下载的图片可能因文本编码而损坏
+Future<void> _clearCorruptedImageCacheOnce(SharedPreferences prefs) async {
+  const migrationKey = 'migration_image_cache_cleared_v1';
+  if (prefs.getBool(migrationKey) == true) return;
+
+  try {
+    final cacheManager = DiscourseCacheManager();
+    await cacheManager.emptyCache();
+    debugPrint('[Migration] Cleared corrupted image cache');
+  } catch (e) {
+    debugPrint('[Migration] Failed to clear image cache: $e');
+  }
+  await prefs.setBool(migrationKey, true);
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,8 +92,13 @@ Future<void> main() async {
   // 初始化 Cookie 同步服务（CSRF token 等）
   await CookieSyncService().init();
 
-  // 初始化本地通知服务（请求权限）
-  LocalNotificationService().initialize();
+  // 一次性清理损坏的图片缓存（v0.1.23 WebView binary fix 后需要）
+  await _clearCorruptedImageCacheOnce(prefs);
+
+  // 初始化本地通知服务（请求权限，Windows 暂不支持）
+  if (!Platform.isWindows) {
+    LocalNotificationService().initialize();
+  }
 
   runApp(ProviderScope(
     overrides: [
@@ -238,7 +260,7 @@ class _MainPageState extends ConsumerState<MainPage> {
       // 双击当前 tab，滚动到顶部
       if (index == 0) {
         ref.read(scrollToTopProvider.notifier).trigger();
-        ref.read(barVisibilityProvider.notifier).state = 1.0;
+        ref.read(barVisibilityProvider.notifier).set(1.0);
       }
       _lastTappedIndex = null;
       _lastTapTime = null;
@@ -247,7 +269,7 @@ class _MainPageState extends ConsumerState<MainPage> {
       _lastTapTime = now;
       if (index != _currentIndex) {
         // 切换 tab 时重置底栏可见性
-        ref.read(barVisibilityProvider.notifier).state = 1.0;
+        ref.read(barVisibilityProvider.notifier).set(1.0);
         setState(() => _currentIndex = index);
       }
     }

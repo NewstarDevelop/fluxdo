@@ -43,14 +43,13 @@ extension _ReactionActions on _PostItemState {
   }
 
   /// 显示回应选择器
-  void _showReactionPicker(BuildContext context, ThemeData theme) async {
+  Future<void> _showReactionPicker(BuildContext context, ThemeData theme) async {
     HapticFeedback.mediumImpact();
 
     final reactions = await _service.getEnabledReactions();
     if (!mounted || reactions.isEmpty) return;
 
     PostReactionPicker.show(
-      // ignore: use_build_context_synchronously
       context: context,
       theme: theme,
       likeButtonKey: _likeButtonKey,

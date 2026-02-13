@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// ignore: depend_on_referenced_packages
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// App Theme State
@@ -30,11 +28,11 @@ class ThemeState {
 }
 
 /// App Theme Notifier
-class ThemeNotifier extends StateNotifier<ThemeState> {
+class ThemeNotifier extends Notifier<ThemeState> {
   static const String _themeModeKey = 'theme_mode';
   static const String _seedColorKey = 'seed_color';
   static const String _dynamicColorKey = 'use_dynamic_color';
-  final SharedPreferences _prefs;
+  late final SharedPreferences _prefs;
 
   // Preset Colors
   static const List<Color> presetColors = [
@@ -50,7 +48,11 @@ class ThemeNotifier extends StateNotifier<ThemeState> {
     Colors.cyan,
   ];
 
-  ThemeNotifier(this._prefs) : super(_loadTheme(_prefs));
+  @override
+  ThemeState build() {
+    _prefs = ref.watch(sharedPreferencesProvider);
+    return _loadTheme(_prefs);
+  }
 
   static ThemeState _loadTheme(SharedPreferences prefs) {
     // Load Mode
@@ -108,7 +110,6 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 });
 
 /// Theme Provider
-final themeProvider = StateNotifierProvider<ThemeNotifier, ThemeState>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return ThemeNotifier(prefs);
-});
+final themeProvider = NotifierProvider<ThemeNotifier, ThemeState>(
+  ThemeNotifier.new,
+);

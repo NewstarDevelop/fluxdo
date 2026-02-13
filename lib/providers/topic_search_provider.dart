@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
+// ignore: depend_on_referenced_packages
+import 'package:flutter_riverpod/legacy.dart' show StateNotifier, StateNotifierProvider;
 import '../models/search_result.dart';
 import 'core_providers.dart';
 import 'search_settings_provider.dart';

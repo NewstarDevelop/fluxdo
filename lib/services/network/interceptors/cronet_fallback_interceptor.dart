@@ -12,7 +12,7 @@ class CronetFallbackInterceptor extends Interceptor {
   bool _isRetrying = false;
 
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) async {
+  Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
     // 避免无限重试
     if (_isRetrying) {
       handler.next(err);

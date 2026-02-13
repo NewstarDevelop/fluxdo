@@ -285,22 +285,23 @@ mixin _PostsMixin on _DiscourseServiceBase {
   }
 
   /// 追踪链接点击
-  void trackClick({
+  Future<void> trackClick({
     required String url,
     required int postId,
     required int topicId,
-  }) {
-    _dio.post(
-      '/clicks/track',
-      data: {
-        'url': url,
-        'post_id': postId,
-        'topic_id': topicId,
-      },
-      options: Options(contentType: Headers.formUrlEncodedContentType),
-    ).catchError((e) {
+  }) async {
+    try {
+      await _dio.post(
+        '/clicks/track',
+        data: {
+          'url': url,
+          'post_id': postId,
+          'topic_id': topicId,
+        },
+        options: Options(contentType: Headers.formUrlEncodedContentType),
+      );
+    } catch (e) {
       debugPrint('[DiscourseService] trackClick failed: $e');
-      return Response(requestOptions: RequestOptions());
-    });
+    }
   }
 }

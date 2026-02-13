@@ -495,7 +495,7 @@ class PreloadedDataService {
   }
 
   /// 检查登录失效：有 token 但没有 currentUser
-  void _checkAuthInvalid() async {
+  Future<void> _checkAuthInvalid() async {
     try {
       final tToken = await CookieJarService().getTToken();
       if (tToken != null && tToken.isNotEmpty) {
@@ -525,21 +525,24 @@ class PreloadedDataService {
 
   void _decodeTopicListAsync(String rawJson) {
     _topicListResponseCompleter ??= Completer<TopicListResponse?>();
-    compute(_decodeTopicListInIsolate, rawJson).then((decoded) {
-      if (decoded == null) {
+    () async {
+      try {
+        final decoded = await compute(_decodeTopicListInIsolate, rawJson);
+        if (decoded == null) {
+          _topicListResponseCompleter?.complete(null);
+          return;
+        }
+        _topicListData = decoded;
+        final topicsCount = (_topicListData?['topic_list']?['topics'] as List?)?.length ??
+            (_topicListData?['topics'] as List?)?.length ??
+            0;
+        debugPrint('[PreloadedData] topic_list 解析成功 (async), topics=$topicsCount');
+        _parseTopicListResponseAsync(decoded);
+      } catch (e) {
+        debugPrint('[PreloadedData] 异步解析 topic_list 失败: $e');
         _topicListResponseCompleter?.complete(null);
-        return;
       }
-      _topicListData = decoded;
-      final topicsCount = (_topicListData?['topic_list']?['topics'] as List?)?.length ??
-          (_topicListData?['topics'] as List?)?.length ??
-          0;
-      debugPrint('[PreloadedData] topic_list 解析成功 (async), topics=$topicsCount');
-      _parseTopicListResponseAsync(decoded);
-    }).catchError((e) {
-      debugPrint('[PreloadedData] 异步解析 topic_list 失败: $e');
-      _topicListResponseCompleter?.complete(null);
-    });
+    }();
   }
 
   void _parseTopicListResponseAsync(Map<String, dynamic> data) {

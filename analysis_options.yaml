@@ -1,1 +1,10 @@
 include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    - avoid_print
+    - prefer_final_locals
+    - prefer_const_declarations
+    - unnecessary_await_in_return
+    - use_super_parameters
+    - no_leading_underscores_for_local_identifiers

@@ -70,8 +70,7 @@ class TopicPreviewDialog extends ConsumerWidget {
 
     // 获取分类信息
     final categoryMap = ref.watch(categoryMapProvider).value;
-    final categoryId = int.tryParse(topic.categoryId);
-    final category = categoryMap?[categoryId];
+    final category = categoryMap?[topic.categoryId];
 
     // 图标逻辑
     IconData? faIcon = FontAwesomeHelper.getIcon(category?.icon);

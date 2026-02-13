@@ -78,11 +78,14 @@ void configurePlatformAdapter(Dio dio) {
 void _configureWebViewAdapter(Dio dio) {
   final adapter = WebViewHttpAdapter();
   dio.httpClientAdapter = adapter;
-  adapter.initialize().then((_) {
-    debugPrint('[DIO] Using WebViewHttpAdapter on Windows');
-  }).catchError((e) {
-    debugPrint('[DIO] WebViewHttpAdapter init failed: $e');
-  });
+  () async {
+    try {
+      await adapter.initialize();
+      debugPrint('[DIO] Using WebViewHttpAdapter on Windows');
+    } catch (e) {
+      debugPrint('[DIO] WebViewHttpAdapter init failed: $e');
+    }
+  }();
 }
 
 /// 配置 Network 适配器

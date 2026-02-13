@@ -46,16 +46,20 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     await ref.read(notificationListProvider.notifier).refresh();
   }
 
-  void _onNotificationTap(DiscourseNotification notification) async {
+  Future<void> _onNotificationTap(DiscourseNotification notification) async {
     // 如果通知未读，先标记为已读
     if (!notification.read) {
       // 立即更新本地状态，让 UI 显示为已读
       ref.read(notificationListProvider.notifier).markAsRead(notification.id);
 
       // 异步发送标记已读请求（不等待结果）
-      ref.read(discourseServiceProvider).markNotificationRead(notification.id).catchError((e) {
-        debugPrint('标记通知已读失败: $e');
-      });
+      () async {
+        try {
+          await ref.read(discourseServiceProvider).markNotificationRead(notification.id);
+        } catch (e) {
+          debugPrint('标记通知已读失败: $e');
+        }
+      }();
     }
 
     // 根据通知类型决定跳转逻辑

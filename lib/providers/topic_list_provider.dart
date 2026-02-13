@@ -221,8 +221,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
   Future<void> loadMore() async {
     if (!_hasMore || state.isLoading) return;
 
-    // ignore: invalid_use_of_internal_member
-    state = const AsyncLoading<List<Topic>>().copyWithPrevious(state);
+    state = const AsyncValue<List<Topic>>.loading().copyWithPrevious(state);
 
     state = await AsyncValue.guard(() async {
       final currentTopics = state.requireValue;
@@ -265,7 +264,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         id: detail.id,
         title: detail.title,
         slug: detail.slug,
-        categoryId: detail.categoryId.toString(),
+        categoryId: detail.categoryId,
         postsCount: detail.postsCount,
         replyCount: detail.postsCount > 0 ? detail.postsCount - 1 : 0,
         views: existingTopic.views,

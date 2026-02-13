@@ -196,10 +196,10 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
     final overrides = ref.read(categoryNotificationOverridesProvider);
     final oldLevel = overrides[widget.category.id] ?? widget.category.notificationLevel;
     // 乐观更新
-    ref.read(categoryNotificationOverridesProvider.notifier).state = {
+    ref.read(categoryNotificationOverridesProvider.notifier).set({
       ...overrides,
       widget.category.id: level.value,
-    };
+    });
     try {
       final service = ref.read(discourseServiceProvider);
       await service.setCategoryNotificationLevel(widget.category.id, level.value);
@@ -208,13 +208,14 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
       if (mounted) {
         final current = ref.read(categoryNotificationOverridesProvider);
         if (oldLevel != null) {
-          ref.read(categoryNotificationOverridesProvider.notifier).state = {
+          ref.read(categoryNotificationOverridesProvider.notifier).set({
             ...current,
             widget.category.id: oldLevel,
-          };
+          });
         } else {
-          ref.read(categoryNotificationOverridesProvider.notifier).state =
-              Map.from(current)..remove(widget.category.id);
+          ref.read(categoryNotificationOverridesProvider.notifier).set(
+              Map.from(current)..remove(widget.category.id),
+          );
         }
       }
     }
