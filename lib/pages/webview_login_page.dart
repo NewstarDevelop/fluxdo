@@ -64,6 +64,15 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
                 // 自动检测登录状态
                 await _checkLoginStatus(controller);
               },
+              // 处理 window.open()（Google OAuth 等第三方登录弹窗）
+              onCreateWindow: (controller, createWindowAction) async {
+                // 在同一个 WebView 中加载弹窗 URL
+                final url = createWindowAction.request.url;
+                if (url != null) {
+                  controller.loadUrl(urlRequest: createWindowAction.request);
+                }
+                return true;
+              },
             ),
           ),
         ],

@@ -521,27 +521,12 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   }
 
   void _showTimelineSheet(TopicDetail detail) {
-    // 构建 stream index → post number 映射
-    // 对于已加载的帖子可以精确映射，未加载的用 stream index 近似
-    final stream = detail.postStream.stream;
-    final posts = detail.postStream.posts;
-    final postIdToNumber = <int, int>{};
-    for (final post in posts) {
-      postIdToNumber[post.id] = post.postNumber;
-    }
-    final postNumbers = <int>[];
-    for (int i = 0; i < stream.length; i++) {
-      postNumbers.add(postIdToNumber[stream[i]] ?? (i + 1));
-    }
-
     showTopicTimelineSheet(
       context: context,
-      currentIndex: _controller.currentVisibleStreamIndex,
-      stream: stream,
-      onJumpToPostId: _scrollToPostById,
-      title: detail.title,
-      postNumbers: postNumbers,
+      currentPostNumber: _controller.postNumberNotifier.value,
       totalPostCount: detail.postsCount,
+      onJumpToPostNumber: _scrollToPost,
+      title: detail.title,
     );
   }
 

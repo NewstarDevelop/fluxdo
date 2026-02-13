@@ -95,34 +95,26 @@ class TopicProgress extends StatelessWidget {
 }
 
 /// 全屏时间线组件，用于快速跳转到指定楼层
-/// 通过拖动滑块或点击轨道来选择目标位置（基于 stream 索引）
+/// 通过拖动滑块或点击轨道来选择目标位置（基于帖子编号）
 class TopicTimelineSheet extends StatefulWidget {
-  /// 当前 stream 索引（1-based）
-  final int currentIndex;
+  /// 当前帖子编号（postNumber）
+  final int currentPostNumber;
 
-  /// stream 数组（帖子 ID 列表）
-  final List<int> stream;
+  /// 总帖子数（highest_post_number）
+  final int totalPostCount;
 
-  /// 跳转回调，参数是帖子 ID
-  final void Function(int postId) onJumpToPostId;
+  /// 跳转回调，参数是帖子编号（postNumber）
+  final void Function(int postNumber) onJumpToPostNumber;
 
   /// 话题标题
   final String? title;
 
-  /// 各 stream 位置对应的帖子编号（用于显示）
-  final List<int>? postNumbers;
-
-  /// 总帖子数（highest_post_number，用于显示）
-  final int? totalPostCount;
-
   const TopicTimelineSheet({
     super.key,
-    required this.currentIndex,
-    required this.stream,
-    required this.onJumpToPostId,
+    required this.currentPostNumber,
+    required this.totalPostCount,
+    required this.onJumpToPostNumber,
     this.title,
-    this.postNumbers,
-    this.totalPostCount,
   });
 
   @override
@@ -130,43 +122,32 @@ class TopicTimelineSheet extends StatefulWidget {
 }
 
 class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
-  late int _selectedIndex;
+  late int _selectedPostNumber;
   bool _isDragging = false;
 
-  int get _totalCount => widget.stream.length;
-
-  /// 获取当前选中位置的显示楼层号
-  int get _displayNumber {
-    if (widget.postNumbers != null && _selectedIndex >= 1 && _selectedIndex <= widget.postNumbers!.length) {
-      return widget.postNumbers![_selectedIndex - 1];
-    }
-    return _selectedIndex;
-  }
-
-  /// 获取显示用的总数
-  int get _displayTotal => widget.totalPostCount ?? _totalCount;
+  int get _totalCount => widget.totalPostCount;
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.currentIndex.clamp(1, _totalCount);
+    _selectedPostNumber = widget.currentPostNumber.clamp(1, _totalCount);
   }
 
-  void _updateIndex(double percent) {
-    final newIndex = (percent * (_totalCount - 1) + 1).round().clamp(1, _totalCount);
-    if (newIndex != _selectedIndex) {
+  void _updatePostNumber(double percent) {
+    final newNumber = (percent * (_totalCount - 1) + 1).round().clamp(1, _totalCount);
+    if (newNumber != _selectedPostNumber) {
       HapticFeedback.selectionClick();
-      setState(() => _selectedIndex = newIndex);
+      setState(() => _selectedPostNumber = newNumber);
     }
   }
 
   void _handleDragStart(DragStartDetails details, BoxConstraints constraints) {
     setState(() => _isDragging = true);
-    _updateIndexFromOffset(details.localPosition.dy, constraints.maxHeight);
+    _updateFromOffset(details.localPosition.dy, constraints.maxHeight);
   }
 
   void _handleDragUpdate(DragUpdateDetails details, BoxConstraints constraints) {
-    _updateIndexFromOffset(details.localPosition.dy, constraints.maxHeight);
+    _updateFromOffset(details.localPosition.dy, constraints.maxHeight);
   }
 
   void _handleDragEnd(DragEndDetails details) {
@@ -174,21 +155,20 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
   }
 
   void _handleTap(TapUpDetails details, BoxConstraints constraints) {
-    _updateIndexFromOffset(details.localPosition.dy, constraints.maxHeight);
+    _updateFromOffset(details.localPosition.dy, constraints.maxHeight);
   }
 
-  void _updateIndexFromOffset(double dy, double maxHeight) {
+  void _updateFromOffset(double dy, double maxHeight) {
     const padding = 32.0;
     final trackHeight = maxHeight - padding * 2;
     final clampedY = (dy - padding).clamp(0.0, trackHeight);
     final percent = clampedY / trackHeight;
-    _updateIndex(percent);
+    _updatePostNumber(percent);
   }
 
   void _commitJump() {
-    if (_selectedIndex >= 1 && _selectedIndex <= _totalCount) {
-      final postId = widget.stream[_selectedIndex - 1];
-      widget.onJumpToPostId(postId);
+    if (_selectedPostNumber >= 1 && _selectedPostNumber <= _totalCount) {
+      widget.onJumpToPostNumber(_selectedPostNumber);
     }
     Navigator.of(context).pop();
   }
@@ -197,7 +177,7 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final percent = _totalCount > 1
-        ? (_selectedIndex - 1) / (_totalCount - 1)
+        ? (_selectedPostNumber - 1) / (_totalCount - 1)
         : 0.0;
 
     return Container(
@@ -254,7 +234,7 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
                             textBaseline: TextBaseline.alphabetic,
                             children: [
                               Text(
-                                '$_displayNumber',
+                                '$_selectedPostNumber',
                                 style: theme.textTheme.displayMedium?.copyWith(
                                   color: theme.colorScheme.primary,
                                   fontWeight: FontWeight.w900,
@@ -262,7 +242,7 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                '/ $_displayTotal',
+                                '/ $_totalCount',
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant.withValues(alpha:0.4),
                                   fontWeight: FontWeight.w500,
@@ -278,7 +258,7 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              _selectedIndex == widget.currentIndex ? '正位于此' : '准备跳转',
+                              _selectedPostNumber == widget.currentPostNumber ? '正位于此' : '准备跳转',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: theme.colorScheme.onPrimaryContainer,
                                 fontWeight: FontWeight.bold,
@@ -445,24 +425,20 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
 /// 显示时间线底部弹窗的便捷方法
 Future<void> showTopicTimelineSheet({
   required BuildContext context,
-  required int currentIndex,
-  required List<int> stream,
-  required void Function(int postId) onJumpToPostId,
+  required int currentPostNumber,
+  required int totalPostCount,
+  required void Function(int postNumber) onJumpToPostNumber,
   String? title,
-  List<int>? postNumbers,
-  int? totalPostCount,
 }) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (context) => TopicTimelineSheet(
-      currentIndex: currentIndex,
-      stream: stream,
-      onJumpToPostId: onJumpToPostId,
-      title: title,
-      postNumbers: postNumbers,
+      currentPostNumber: currentPostNumber,
       totalPostCount: totalPostCount,
+      onJumpToPostNumber: onJumpToPostNumber,
+      title: title,
     ),
   );
 }
