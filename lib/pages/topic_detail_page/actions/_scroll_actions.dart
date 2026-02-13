@@ -39,6 +39,9 @@ extension _ScrollActions on _TopicDetailPageState {
       orElse: () => posts.first,
     );
 
+    // 更新 post number（用于进度显示）
+    _controller.updatePostNumber(post.postNumber);
+
     final streamIndex = stream.indexOf(post.id);
     if (streamIndex != -1) {
       final newIndex = streamIndex + 1;

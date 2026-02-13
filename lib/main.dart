@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -43,6 +44,15 @@ Future<void> main() async {
   // 桌面平台初始化 window_manager（用于视频全屏等窗口控制）
   if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
     await windowManager.ensureInitialized();
+  }
+
+  // Android 沉浸式导航栏（edge-to-edge）
+  if (Platform.isAndroid) {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
   }
 
   // 初始化 User-Agent（获取 WebView UA 并移除 wv 标识）
@@ -170,6 +180,7 @@ class _MainPageState extends ConsumerState<MainPage> {
   bool _messageBusInitialized = false;
   int? _lastTappedIndex;
   DateTime? _lastTapTime;
+  DateTime? _lastBackPressTime;
 
   final List<Widget> _pages = const [
     TopicsScreen(),
@@ -287,11 +298,32 @@ class _MainPageState extends ConsumerState<MainPage> {
     final user = currentUserAsync.value;
 
     // 首页的 FAB 由 TopicsScreen 内部处理，避免切换时闪烁
-    return AdaptiveScaffold(
-      selectedIndex: _currentIndex,
-      onDestinationSelected: _onDestinationSelected,
-      destinations: _buildDestinations(user),
-      body: _pages[_currentIndex],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final now = DateTime.now();
+        if (_lastBackPressTime != null &&
+            now.difference(_lastBackPressTime!).inMilliseconds < 2000) {
+          Navigator.of(context).pop();
+        } else {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('再按一次返回退出'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+        }
+      },
+      child: AdaptiveScaffold(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: _onDestinationSelected,
+        destinations: _buildDestinations(user),
+        body: _pages[_currentIndex],
+      ),
     );
   }
 

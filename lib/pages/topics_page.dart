@@ -28,6 +28,7 @@ import '../widgets/layout/master_detail_layout.dart';
 import '../widgets/common/error_view.dart';
 import '../widgets/common/loading_dialog.dart';
 import '../widgets/common/fading_edge_scroll_view.dart';
+import '../utils/responsive.dart';
 
 class ScrollToTopNotifier extends Notifier<int> {
   @override
@@ -461,6 +462,10 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
               );
             },
             onDebugTopicId: () => _showTopicIdDialog(context),
+            onRefresh: () {
+              final providerKey = (currentSort, currentCategoryId);
+              ref.invalidate(topicListProvider(providerKey));
+            },
             trailing: _buildTrailing(currentCategory, isLoggedIn, currentSort),
           ),
         ),
@@ -565,6 +570,7 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onCategoryManager;
   final VoidCallback onSearch;
   final VoidCallback onDebugTopicId;
+  final VoidCallback? onRefresh;
   final Widget? trailing;
 
   _TopicsHeaderDelegate({
@@ -583,6 +589,7 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onCategoryManager,
     required this.onSearch,
     required this.onDebugTopicId,
+    this.onRefresh,
     this.trailing,
   });
 
@@ -717,6 +724,14 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
                       onSortChanged: onSortChanged,
                       style: SortDropdownStyle.compact,
                     ),
+                  ),
+                // 刷新按钮（桌面端无法下拉刷新）
+                if (onRefresh != null && !Responsive.isMobile(context))
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 20),
+                    onPressed: onRefresh,
+                    tooltip: '刷新',
+                    visualDensity: VisualDensity.compact,
                   ),
                 // 分类浏览按钮
                 Padding(

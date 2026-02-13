@@ -109,12 +109,20 @@ class TopicTimelineSheet extends StatefulWidget {
   /// 话题标题
   final String? title;
 
+  /// 各 stream 位置对应的帖子编号（用于显示）
+  final List<int>? postNumbers;
+
+  /// 总帖子数（highest_post_number，用于显示）
+  final int? totalPostCount;
+
   const TopicTimelineSheet({
     super.key,
     required this.currentIndex,
     required this.stream,
     required this.onJumpToPostId,
     this.title,
+    this.postNumbers,
+    this.totalPostCount,
   });
 
   @override
@@ -126,6 +134,17 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
   bool _isDragging = false;
 
   int get _totalCount => widget.stream.length;
+
+  /// 获取当前选中位置的显示楼层号
+  int get _displayNumber {
+    if (widget.postNumbers != null && _selectedIndex >= 1 && _selectedIndex <= widget.postNumbers!.length) {
+      return widget.postNumbers![_selectedIndex - 1];
+    }
+    return _selectedIndex;
+  }
+
+  /// 获取显示用的总数
+  int get _displayTotal => widget.totalPostCount ?? _totalCount;
 
   @override
   void initState() {
@@ -235,7 +254,7 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
                             textBaseline: TextBaseline.alphabetic,
                             children: [
                               Text(
-                                '$_selectedIndex',
+                                '$_displayNumber',
                                 style: theme.textTheme.displayMedium?.copyWith(
                                   color: theme.colorScheme.primary,
                                   fontWeight: FontWeight.w900,
@@ -243,7 +262,7 @@ class _TopicTimelineSheetState extends State<TopicTimelineSheet> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                '/ $_totalCount',
+                                '/ $_displayTotal',
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant.withValues(alpha:0.4),
                                   fontWeight: FontWeight.w500,
@@ -430,6 +449,8 @@ Future<void> showTopicTimelineSheet({
   required List<int> stream,
   required void Function(int postId) onJumpToPostId,
   String? title,
+  List<int>? postNumbers,
+  int? totalPostCount,
 }) {
   return showModalBottomSheet(
     context: context,
@@ -440,6 +461,8 @@ Future<void> showTopicTimelineSheet({
       stream: stream,
       onJumpToPostId: onJumpToPostId,
       title: title,
+      postNumbers: postNumbers,
+      totalPostCount: totalPostCount,
     ),
   );
 }

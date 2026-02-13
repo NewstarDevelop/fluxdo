@@ -521,12 +521,27 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   }
 
   void _showTimelineSheet(TopicDetail detail) {
+    // 构建 stream index → post number 映射
+    // 对于已加载的帖子可以精确映射，未加载的用 stream index 近似
+    final stream = detail.postStream.stream;
+    final posts = detail.postStream.posts;
+    final postIdToNumber = <int, int>{};
+    for (final post in posts) {
+      postIdToNumber[post.id] = post.postNumber;
+    }
+    final postNumbers = <int>[];
+    for (int i = 0; i < stream.length; i++) {
+      postNumbers.add(postIdToNumber[stream[i]] ?? (i + 1));
+    }
+
     showTopicTimelineSheet(
       context: context,
       currentIndex: _controller.currentVisibleStreamIndex,
-      stream: detail.postStream.stream,
+      stream: stream,
       onJumpToPostId: _scrollToPostById,
       title: detail.title,
+      postNumbers: postNumbers,
+      totalPostCount: detail.postsCount,
     );
   }
 
@@ -728,13 +743,13 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
               valueListenable: _controller.showBottomBarNotifier,
               builder: (context, showBottomBar, _) {
                 return ValueListenableBuilder<int>(
-                  valueListenable: _controller.streamIndexNotifier,
-                  builder: (context, currentStreamIndex, _) {
+                  valueListenable: _controller.postNumberNotifier,
+                  builder: (context, currentPostNumber, _) {
                     return TopicDetailOverlay(
                       showBottomBar: showBottomBar,
                       isLoggedIn: isLoggedIn,
-                      currentStreamIndex: currentStreamIndex,
-                      totalCount: detail.postStream.stream.length,
+                      currentStreamIndex: currentPostNumber,
+                      totalCount: detail.postsCount,
                       detail: detail,
                       onScrollToTop: _scrollToTop,
                       onShare: _shareTopic,

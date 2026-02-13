@@ -47,7 +47,7 @@ extension _ReactionActions on _PostItemState {
     HapticFeedback.mediumImpact();
 
     final reactions = await _service.getEnabledReactions();
-    if (!mounted || reactions.isEmpty) return;
+    if (!context.mounted || reactions.isEmpty) return;
 
     PostReactionPicker.show(
       context: context,
