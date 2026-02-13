@@ -78,7 +78,7 @@ class TopicsPage extends ConsumerStatefulWidget {
   ConsumerState<TopicsPage> createState() => _TopicsPageState();
 }
 
-class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStateMixin {
+class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   int _tabLength = 1; // 初始只有"全部"
   int _currentTabIndex = 0;
@@ -89,9 +89,12 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
   AnimationController? _snapAnim;
   bool _isSnapping = false;
 
+  Orientation? _lastOrientation;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final pinnedIds = ref.read(pinnedCategoriesProvider);
     _tabLength = 1 + pinnedIds.length;
     _tabController = TabController(length: _tabLength, vsync: this);
@@ -100,7 +103,26 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
   }
 
   @override
+  void didChangeMetrics() {
+    // 屏幕尺寸变化时（旋转、折叠屏展开等）重置滚动位置，
+    // 避免 SliverPersistentHeader 高度变化导致 UI 错位。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final orientation = MediaQuery.orientationOf(context);
+      if (_lastOrientation != null && _lastOrientation != orientation) {
+        if (_outerScrollController.hasClients) {
+          _outerScrollController.jumpTo(0);
+        }
+        _cancelSnap();
+        ref.read(barVisibilityProvider.notifier).set(1.0);
+      }
+      _lastOrientation = orientation;
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _snapTimer?.cancel();
     _snapAnim?.dispose();
     _outerScrollController.removeListener(_scheduleSnap);
@@ -203,7 +225,7 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     );
   }
 
-  Future<void> _openCategoryManager() async {
+  void _openCategoryManager() async {
     final categoryId = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
@@ -419,14 +441,6 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
               }
             },
             onCategoryManager: _openCategoryManager,
-            onRefresh: () {
-              final providerKey = (currentSort, currentCategoryId);
-              // ignore: unused_result
-              ref.refresh(topicListProvider(providerKey));
-              if (currentSort == TopicListFilter.latest) {
-                ref.read(latestChannelProvider.notifier).clearNewTopicsForCategory(currentCategoryId);
-              }
-            },
             onSearch: () {
               SearchFilter? filter;
               if (currentCategory != null) {
@@ -549,7 +563,6 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onAddTag;
   final ValueChanged<int> onTabTap;
   final VoidCallback onCategoryManager;
-  final VoidCallback onRefresh;
   final VoidCallback onSearch;
   final VoidCallback onDebugTopicId;
   final Widget? trailing;
@@ -568,7 +581,6 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onAddTag,
     required this.onTabTap,
     required this.onCategoryManager,
-    required this.onRefresh,
     required this.onSearch,
     required this.onDebugTopicId,
     this.trailing,
@@ -706,13 +718,6 @@ class _TopicsHeaderDelegate extends SliverPersistentHeaderDelegate {
                       style: SortDropdownStyle.compact,
                     ),
                   ),
-                // 刷新按钮
-                IconButton(
-                  icon: const Icon(Icons.refresh, size: 20),
-                  onPressed: onRefresh,
-                  tooltip: '刷新',
-                  visualDensity: VisualDensity.compact,
-                ),
                 // 分类浏览按钮
                 Padding(
                   padding: const EdgeInsets.only(right: 8),

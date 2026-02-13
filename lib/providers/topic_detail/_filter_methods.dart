@@ -74,6 +74,7 @@ extension FilterMethods on TopicDetailNotifier {
     _isLoadingMore = true;
 
     try {
+      // ignore: invalid_use_of_internal_member
       state = const AsyncValue<TopicDetail>.loading().copyWithPrevious(state);
 
       state = await AsyncValue.guard(() async {
@@ -130,6 +131,7 @@ extension FilterMethods on TopicDetailNotifier {
     _isLoadingPrevious = true;
 
     try {
+      // ignore: invalid_use_of_internal_member
       state = const AsyncValue<TopicDetail>.loading().copyWithPrevious(state);
 
       state = await AsyncValue.guard(() async {

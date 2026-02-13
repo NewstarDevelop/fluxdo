@@ -72,6 +72,7 @@ class LdcUserInfoNotifier extends AsyncNotifier<LdcUserInfo?> {
   }
 
   Future<void> refresh() async {
+    // ignore: invalid_use_of_internal_member
     state = const AsyncValue<LdcUserInfo?>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() => _fetchUserInfo());
   }

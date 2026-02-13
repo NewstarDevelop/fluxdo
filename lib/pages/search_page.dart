@@ -35,6 +35,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   bool _hasMoreUsers = false;
   bool _hasError = false;
   String _errorMessage = '';
+  String? _aiAnswer;
 
   // 最近搜索记录
   List<String> _recentSearches = [];
@@ -243,6 +244,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         if (_currentPage == 1) {
           _allPosts = result.posts;
           _allUsers = result.users;
+          _aiAnswer = result.aiAnswer;
         } else {
           _allPosts.addAll(result.posts);
         }
@@ -276,6 +278,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       _currentQuery = '';
       _allPosts = [];
       _allUsers = [];
+      _aiAnswer = null;
       _hasMorePosts = false;
       _hasMoreUsers = false;
       _currentPage = 1;
@@ -564,6 +567,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     return Column(
       children: [
+        // AI 搜索摘要
+        if (_aiAnswer != null && _aiAnswer!.isNotEmpty)
+          _AiAnswerCard(aiAnswer: _aiAnswer!),
         // 排序选项
         if (_allPosts.isNotEmpty || _allUsers.isNotEmpty)
           Container(
@@ -808,6 +814,94 @@ class _SearchUserCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// AI 搜索摘要卡片
+class _AiAnswerCard extends StatefulWidget {
+  final String aiAnswer;
+
+  const _AiAnswerCard({required this.aiAnswer});
+
+  @override
+  State<_AiAnswerCard> createState() => _AiAnswerCardState();
+}
+
+class _AiAnswerCardState extends State<_AiAnswerCard> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // 移除 HTML 标签，保留纯文本
+    final plainText = widget.aiAnswer
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .trim();
+
+    if (plainText.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+        ),
+      ),
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.auto_awesome,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'AI 摘要',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: SelectableText(
+                plainText,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  height: 1.5,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -104,6 +104,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   bool? _lastCanShowDetailPane;
   bool _isAutoSwitching = false;
   bool _autoOpenReplyHandled = false; // 是否已处理自动打开回复框
+  Orientation? _lastOrientation;
 
   @override
   void initState() {
@@ -193,6 +194,21 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final hasFocus = state == AppLifecycleState.resumed;
     _screenTrack.setHasFocus(hasFocus);
+  }
+
+  @override
+  void didChangeMetrics() {
+    // 屏幕旋转/折叠屏展开时，重置滚动位置避免 UI 错位
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final orientation = MediaQuery.orientationOf(context);
+      if (_lastOrientation != null && _lastOrientation != orientation) {
+        if (_controller.scrollController.hasClients) {
+          _controller.scrollController.jumpTo(0);
+        }
+      }
+      _lastOrientation = orientation;
+    });
   }
 
   void _scheduleCheckTitleVisibility() {

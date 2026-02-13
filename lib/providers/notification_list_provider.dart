@@ -50,6 +50,7 @@ class NotificationListNotifier extends AsyncNotifier<List<DiscourseNotification>
   Future<void> loadMore() async {
     if (!hasMore || state.isLoading) return;
 
+    // ignore: invalid_use_of_internal_member
     state = const AsyncValue<List<DiscourseNotification>>.loading().copyWithPrevious(state);
 
     state = await AsyncValue.guard(() async {

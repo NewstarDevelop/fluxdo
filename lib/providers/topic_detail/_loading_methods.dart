@@ -15,6 +15,7 @@ extension LoadingMethods on TopicDetailNotifier {
     _isLoadingPrevious = true;
 
     try {
+      // ignore: invalid_use_of_internal_member
       state = const AsyncValue<TopicDetail>.loading().copyWithPrevious(state);
 
       state = await AsyncValue.guard(() async {
@@ -76,6 +77,7 @@ extension LoadingMethods on TopicDetailNotifier {
     _isLoadingMore = true;
 
     try {
+      // ignore: invalid_use_of_internal_member
       state = const AsyncValue<TopicDetail>.loading().copyWithPrevious(state);
 
       state = await AsyncValue.guard(() async {
@@ -237,6 +239,7 @@ extension LoadingMethods on TopicDetailNotifier {
   Future<void> refreshWithPostNumber(int postNumber) async {
     if (state.isLoading) return;
 
+    // ignore: invalid_use_of_internal_member
     state = const AsyncValue<TopicDetail>.loading().copyWithPrevious(state);
 
     state = await AsyncValue.guard(() async {

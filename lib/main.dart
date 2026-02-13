@@ -26,7 +26,6 @@ import 'services/cf_challenge_logger.dart';
 import 'services/update_service.dart';
 import 'services/update_checker_helper.dart';
 import 'services/deep_link_service.dart';
-import 'services/discourse_cache_manager.dart';
 import 'models/user.dart';
 import 'constants.dart';
 
@@ -37,22 +36,6 @@ import 'widgets/preheat_gate.dart';
 import 'widgets/onboarding_gate.dart';
 import 'widgets/layout/adaptive_scaffold.dart';
 import 'widgets/layout/adaptive_navigation.dart';
-
-/// 一次性清理损坏的图片缓存
-/// WebView binary fix (v0.1.23) 之前下载的图片可能因文本编码而损坏
-Future<void> _clearCorruptedImageCacheOnce(SharedPreferences prefs) async {
-  const migrationKey = 'migration_image_cache_cleared_v1';
-  if (prefs.getBool(migrationKey) == true) return;
-
-  try {
-    final cacheManager = DiscourseCacheManager();
-    await cacheManager.emptyCache();
-    debugPrint('[Migration] Cleared corrupted image cache');
-  } catch (e) {
-    debugPrint('[Migration] Failed to clear image cache: $e');
-  }
-  await prefs.setBool(migrationKey, true);
-}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -92,13 +75,8 @@ Future<void> main() async {
   // 初始化 Cookie 同步服务（CSRF token 等）
   await CookieSyncService().init();
 
-  // 一次性清理损坏的图片缓存（v0.1.23 WebView binary fix 后需要）
-  await _clearCorruptedImageCacheOnce(prefs);
-
-  // 初始化本地通知服务（请求权限，Windows 暂不支持）
-  if (!Platform.isWindows) {
-    LocalNotificationService().initialize();
-  }
+  // 初始化本地通知服务（请求权限）
+  LocalNotificationService().initialize();
 
   runApp(ProviderScope(
     overrides: [
@@ -143,6 +121,7 @@ class MainApp extends ConsumerWidget {
         }
 
         return MaterialApp(
+          scrollBehavior: const _AppScrollBehavior(),
           navigatorKey: navigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
           title: 'FluxDO',
@@ -339,5 +318,31 @@ class _MainPageState extends ConsumerState<MainPage> {
         label: '我的',
       ),
     ];
+  }
+}
+
+/// 自定义滚动行为：在 Android 上使用经典的 clamp 效果，
+/// 避免 Android 12+ 的 stretch overscroll 被误认为 Chrome 刷新动画。
+class _AppScrollBehavior extends MaterialScrollBehavior {
+  const _AppScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    // Android 上使用 GlowingOverscrollIndicator（经典 glow 效果）
+    // 而非 Material 3 默认的 StretchingOverscrollIndicator
+    switch (getPlatform(context)) {
+      case TargetPlatform.android:
+        return GlowingOverscrollIndicator(
+          axisDirection: details.direction,
+          color: Theme.of(context).colorScheme.primary,
+          child: child,
+        );
+      default:
+        return child;
+    }
   }
 }
