@@ -1,5 +1,4 @@
-// ignore: depend_on_referenced_packages
-import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 当前选中的话题（用于 Master-Detail 模式）
 class SelectedTopicState {
@@ -32,8 +31,9 @@ class SelectedTopicState {
   }
 }
 
-class SelectedTopicNotifier extends StateNotifier<SelectedTopicState> {
-  SelectedTopicNotifier() : super(const SelectedTopicState());
+class SelectedTopicNotifier extends Notifier<SelectedTopicState> {
+  @override
+  SelectedTopicState build() => const SelectedTopicState();
 
   void select({
     required int topicId,
@@ -52,7 +52,6 @@ class SelectedTopicNotifier extends StateNotifier<SelectedTopicState> {
   }
 }
 
-final selectedTopicProvider =
-    StateNotifierProvider<SelectedTopicNotifier, SelectedTopicState>((ref) {
-  return SelectedTopicNotifier();
-});
+final selectedTopicProvider = NotifierProvider<SelectedTopicNotifier, SelectedTopicState>(
+  SelectedTopicNotifier.new,
+);

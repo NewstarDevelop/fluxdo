@@ -222,7 +222,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
     if (!_hasMore || state.isLoading) return;
 
     // ignore: invalid_use_of_internal_member
-    state = const AsyncLoading<List<Topic>>().copyWithPrevious(state);
+    state = const AsyncValue<List<Topic>>.loading().copyWithPrevious(state);
 
     state = await AsyncValue.guard(() async {
       final currentTopics = state.requireValue;
@@ -261,19 +261,13 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       final service = ref.read(discourseServiceProvider);
       final detail = await service.getTopicDetail(topicId);
 
-      final updatedTopic = Topic(
-        id: detail.id,
+      final updatedTopic = existingTopic.copyWith(
         title: detail.title,
         slug: detail.slug,
-        categoryId: detail.categoryId.toString(),
+        categoryId: detail.categoryId,
         postsCount: detail.postsCount,
         replyCount: detail.postsCount > 0 ? detail.postsCount - 1 : 0,
-        views: existingTopic.views,
-        likeCount: existingTopic.likeCount,
-        lastPostedAt: existingTopic.lastPostedAt,
-        pinned: existingTopic.pinned,
         tags: detail.tags ?? existingTopic.tags,
-        posters: existingTopic.posters,
         unseen: false,
         unread: 0,
         lastReadPostNumber: detail.postsCount,
@@ -319,30 +313,11 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
 
     final newUnread = (topic.highestPostNumber - highestSeen).clamp(0, topic.highestPostNumber);
 
-    final updated = Topic(
-      id: topic.id,
-      title: topic.title,
-      slug: topic.slug,
-      postsCount: topic.postsCount,
-      replyCount: topic.replyCount,
-      views: topic.views,
-      likeCount: topic.likeCount,
-      excerpt: topic.excerpt,
-      createdAt: topic.createdAt,
-      lastPostedAt: topic.lastPostedAt,
-      lastPosterUsername: topic.lastPosterUsername,
-      categoryId: topic.categoryId,
-      pinned: topic.pinned,
-      visible: topic.visible,
-      closed: topic.closed,
-      archived: topic.archived,
-      tags: topic.tags,
-      posters: topic.posters,
+    final updated = topic.copyWith(
       unseen: false,
       unread: newUnread,
       newPosts: 0,
       lastReadPostNumber: highestSeen,
-      highestPostNumber: topic.highestPostNumber,
     );
 
     final newList = [...topics];

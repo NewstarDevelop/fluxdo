@@ -1,5 +1,4 @@
-// ignore: depend_on_referenced_packages
-import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_provider.dart';
 
@@ -31,12 +30,16 @@ class SearchSettings {
 }
 
 /// 搜索设置 StateNotifier，管理状态和持久化
-class SearchSettingsNotifier extends StateNotifier<SearchSettings> {
+class SearchSettingsNotifier extends Notifier<SearchSettings> {
   static const String _sortOrderKey = 'search_sort_order';
 
-  SearchSettingsNotifier(this._prefs) : super(_loadFromPrefs(_prefs));
+  late final SharedPreferences _prefs;
 
-  final SharedPreferences _prefs;
+  @override
+  SearchSettings build() {
+    _prefs = ref.watch(sharedPreferencesProvider);
+    return _loadFromPrefs(_prefs);
+  }
 
   static SearchSettings _loadFromPrefs(SharedPreferences prefs) {
     final sortOrderValue = prefs.getString(_sortOrderKey);
@@ -58,8 +61,6 @@ class SearchSettingsNotifier extends StateNotifier<SearchSettings> {
 }
 
 /// 搜索设置 Provider
-final searchSettingsProvider =
-    StateNotifierProvider<SearchSettingsNotifier, SearchSettings>((ref) {
-      final prefs = ref.watch(sharedPreferencesProvider);
-      return SearchSettingsNotifier(prefs);
-    });
+final searchSettingsProvider = NotifierProvider<SearchSettingsNotifier, SearchSettings>(
+  SearchSettingsNotifier.new,
+);

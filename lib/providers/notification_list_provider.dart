@@ -51,7 +51,7 @@ class NotificationListNotifier extends AsyncNotifier<List<DiscourseNotification>
     if (!hasMore || state.isLoading) return;
 
     // ignore: invalid_use_of_internal_member
-    state = const AsyncLoading<List<DiscourseNotification>>().copyWithPrevious(state);
+    state = const AsyncValue<List<DiscourseNotification>>.loading().copyWithPrevious(state);
 
     state = await AsyncValue.guard(() async {
       final currentList = state.requireValue;
@@ -81,20 +81,7 @@ class NotificationListNotifier extends AsyncNotifier<List<DiscourseNotification>
     // 更新本地状态
     state.whenData((list) {
       state = AsyncValue.data(
-        list.map((n) => DiscourseNotification(
-          id: n.id,
-          userId: n.userId,
-          notificationType: n.notificationType,
-          read: true,
-          highPriority: n.highPriority,
-          createdAt: n.createdAt,
-          postNumber: n.postNumber,
-          topicId: n.topicId,
-          slug: n.slug,
-          data: n.data,
-          fancyTitle: n.fancyTitle,
-          actingUserAvatarTemplate: n.actingUserAvatarTemplate,
-        )).toList(),
+        list.map((n) => n.copyWith(read: true)).toList(),
       );
     });
   }
@@ -103,25 +90,7 @@ class NotificationListNotifier extends AsyncNotifier<List<DiscourseNotification>
   void markAsRead(int notificationId) {
     state.whenData((list) {
       state = AsyncValue.data(
-        list.map((n) {
-          if (n.id == notificationId) {
-            return DiscourseNotification(
-              id: n.id,
-              userId: n.userId,
-              notificationType: n.notificationType,
-              read: true,
-              highPriority: n.highPriority,
-              createdAt: n.createdAt,
-              postNumber: n.postNumber,
-              topicId: n.topicId,
-              slug: n.slug,
-              data: n.data,
-              fancyTitle: n.fancyTitle,
-              actingUserAvatarTemplate: n.actingUserAvatarTemplate,
-            );
-          }
-          return n;
-        }).toList(),
+        list.map((n) => n.id == notificationId ? n.copyWith(read: true) : n).toList(),
       );
     });
   }
