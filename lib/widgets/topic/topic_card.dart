@@ -4,7 +4,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../models/topic.dart';
 import '../../models/category.dart';
 import '../../providers/discourse_providers.dart';
-import '../../constants.dart';
+import '../../utils/color_utils.dart';
+import '../../utils/url_helper.dart';
 import '../../utils/font_awesome_helper.dart';
 import '../common/topic_badges.dart';
 import '../common/smart_avatar.dart';
@@ -32,13 +33,10 @@ class TopicCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isUnread = topic.unseen || topic.unread > 0;
-    // 全部读完：进入过话题且没有未读帖子
-    final isFullyRead = !topic.unseen && topic.unread == 0 && topic.lastReadPostNumber != null;
 
     // 获取分类信息
     final categoryMap = ref.watch(categoryMapProvider).value;
-    final categoryId = int.tryParse(topic.categoryId);
-    final category = categoryMap?[categoryId];
+    final category = categoryMap?[topic.categoryId];
     
     // 图标逻辑优先级：
     // 1. 本级 FA Icon
@@ -58,12 +56,11 @@ class TopicCard extends ConsumerWidget {
       faIcon = FontAwesomeHelper.getIcon(parent?.icon);
       logoUrl = parent?.uploadedLogo;
     }
-    
 
-
-    return Card(
+    return RepaintBoundary(
+      child: Card(
       margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior: Clip.hardEdge,
       elevation: isSelected ? 0 : 0,
       color: isSelected ? theme.colorScheme.primaryContainer.withValues(alpha:0.4) : null,
       shape: RoundedRectangleBorder(
@@ -78,9 +75,7 @@ class TopicCard extends ConsumerWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        child: Opacity(
-          opacity: isFullyRead ? 0.5 : 1.0,
-          child: Padding(
+        child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,7 +253,7 @@ class TopicCard extends ConsumerWidget {
       ),
     );
   }
-  
+
   Widget _buildStackedAvatars(BuildContext context, List<TopicPoster> posters) {
     // Filter valid users
     final validPosters = posters.where((p) => p.user != null).toList();
@@ -277,9 +272,7 @@ class TopicCard extends ConsumerWidget {
         children: List.generate(displayPosters.length, (index) {
           final poster = displayPosters[index];
           
-          final avatarUrl = poster.user!.avatarTemplate.startsWith('http')
-              ? poster.user!.getAvatarUrl(size: 48)
-              : '${AppConstants.baseUrl}${poster.user!.getAvatarUrl(size: 48)}';
+          final avatarUrl = poster.user!.getAvatarUrl(size: 48);
           return Positioned(
             left: index * (avatarSize - overlap),
             child: SmartAvatar(
@@ -338,8 +331,7 @@ class CompactTopicCard extends ConsumerWidget {
     
     // 获取分类信息
     final categoryMap = ref.watch(categoryMapProvider).value;
-    final categoryId = int.tryParse(topic.categoryId);
-    final category = categoryMap?[categoryId];
+    final category = categoryMap?[topic.categoryId];
     
     // 图标逻辑
     IconData? faIcon = FontAwesomeHelper.getIcon(category?.icon);
@@ -353,7 +345,7 @@ class CompactTopicCard extends ConsumerWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior: Clip.hardEdge,
       elevation: isSelected ? 0 : 0,
       color: isSelected
           ? theme.colorScheme.primaryContainer.withValues(alpha:0.4)
@@ -388,14 +380,12 @@ class CompactTopicCard extends ConsumerWidget {
                   FaIcon(
                     faIcon,
                     size: 12,
-                    color: _parseColor(category.color),
+                    color: ColorUtils.parseHex(category.color),
                   )
                 else if (logoUrl != null && logoUrl.isNotEmpty)
                   Image(
                     image: discourseImageProvider(
-                      logoUrl.startsWith('http') 
-                          ? logoUrl 
-                          : '${AppConstants.baseUrl}$logoUrl',
+                      UrlHelper.resolveUrl(logoUrl),
                     ),
                     width: 12,
                     height: 12,
@@ -510,17 +500,10 @@ class CompactTopicCard extends ConsumerWidget {
       width: 6,
       height: 6,
       decoration: BoxDecoration(
-        color: _parseColor(category.color),
+        color: ColorUtils.parseHex(category.color),
         shape: BoxShape.circle,
       ),
     );
   }
 
-  Color _parseColor(String hex) {
-    hex = hex.replaceAll('#', '');
-    if (hex.length == 6) {
-      return Color(int.parse('0xFF$hex'));
-    }
-    return Colors.grey;
-  }
 }
