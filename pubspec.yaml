@@ -1,5 +1,5 @@
 name: fluxdo
-description: "A new Flutter project."
+description: "FluxDO - A feature-rich Discourse client for linux.do"
 publish_to: 'none'
 version: 0.1.24+2026021311
 
@@ -66,9 +66,9 @@ dependencies:
 
   window_manager: ^0.5.1
 
-  chewie: any
-  video_player: any
-  ffi: any
+  chewie: ^1.8.5
+  video_player: ^2.9.2
+  ffi: ^2.1.3
 dependency_overrides:
   # super_clipboard 0.9.1 要求 device_info_plus <12.0.0，
   # 但实际 12.x 接口兼容，强制使用项目版本
@@ -85,21 +85,4 @@ flutter:
     - assets/logo.svg
     - assets/images/
     - assets/certs/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
