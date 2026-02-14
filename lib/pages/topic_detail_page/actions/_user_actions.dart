@@ -139,7 +139,7 @@ extension _UserActions on _TopicDetailPageState {
     ref.read(topicDetailProvider(params).notifier).refreshPost(postId);
   }
 
-  void _handleNotificationLevelChanged(TopicDetailNotifier notifier, TopicNotificationLevel level) async {
+  Future<void> _handleNotificationLevelChanged(TopicDetailNotifier notifier, TopicNotificationLevel level) async {
     try {
       await notifier.updateNotificationLevel(level);
       if (mounted) {

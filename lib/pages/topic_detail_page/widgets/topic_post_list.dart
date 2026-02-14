@@ -166,14 +166,27 @@ class _TopicPostListState extends State<TopicPostList> {
     }
 
     if (firstVisiblePostIndex != null) {
-      final postNumber = posts[firstVisiblePostIndex].postNumber;
+      int reportPostNumber = posts[firstVisiblePostIndex].postNumber;
+
+      // 修复楼层显示 bug：滑到底部且没有更多帖子时，报告最后一个可见帖子
+      if (_isAtBottom() && !hasMoreAfter && visiblePostNumbers.isNotEmpty) {
+        reportPostNumber = visiblePostNumbers.reduce((a, b) => a > b ? a : b);
+      }
 
       // 防止重复报告相同的帖子
-      if (postNumber != _lastReportedPostNumber) {
-        _lastReportedPostNumber = postNumber;
-        widget.onFirstVisiblePostChanged(postNumber);
+      if (reportPostNumber != _lastReportedPostNumber) {
+        _lastReportedPostNumber = reportPostNumber;
+        widget.onFirstVisiblePostChanged(reportPostNumber);
       }
     }
+  }
+
+  /// 判断是否滚动到了底部
+  bool _isAtBottom() {
+    if (!scrollController.hasClients) return false;
+    final position = scrollController.position;
+    // 允许 1px 误差
+    return position.pixels >= position.maxScrollExtent - 1;
   }
 
   /// 处理滚动通知，同时更新可见帖子
@@ -181,10 +194,10 @@ class _TopicPostListState extends State<TopicPostList> {
     // 先调用原有的滚动通知处理
     final result = onScrollNotification(notification);
 
-    // 在滚动更新时检测可见帖子（节流 16ms）
+    // 在滚动更新时检测可见帖子（节流 150ms，减少滚动时的计算开销）
     if (notification is ScrollUpdateNotification && !_isThrottled) {
       _isThrottled = true;
-      Future.delayed(const Duration(milliseconds: 16), () {
+      Future.delayed(const Duration(milliseconds: 150), () {
         if (mounted) {
           _isThrottled = false;
           _updateFirstVisiblePost();
@@ -222,7 +235,7 @@ class _TopicPostListState extends State<TopicPostList> {
       child: CustomScrollView(
           controller: scrollController,
           center: centerKey,
-          cacheExtent: 500,
+          cacheExtent: 1500,
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           slivers: [
           // 向上加载骨架屏

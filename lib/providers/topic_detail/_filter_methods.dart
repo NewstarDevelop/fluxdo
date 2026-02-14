@@ -75,7 +75,7 @@ extension FilterMethods on TopicDetailNotifier {
 
     try {
       // ignore: invalid_use_of_internal_member
-      state = const AsyncLoading<TopicDetail>().copyWithPrevious(state);
+      state = const AsyncValue<TopicDetail>.loading().copyWithPrevious(state);
 
       state = await AsyncValue.guard(() async {
         final currentDetail = state.requireValue;
@@ -132,7 +132,7 @@ extension FilterMethods on TopicDetailNotifier {
 
     try {
       // ignore: invalid_use_of_internal_member
-      state = const AsyncLoading<TopicDetail>().copyWithPrevious(state);
+      state = const AsyncValue<TopicDetail>.loading().copyWithPrevious(state);
 
       state = await AsyncValue.guard(() async {
         final currentDetail = state.requireValue;

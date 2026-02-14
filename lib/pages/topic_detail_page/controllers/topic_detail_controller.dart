@@ -83,9 +83,13 @@ class TopicDetailController extends ChangeNotifier {
   final Set<int> _visiblePostNumbers = {};
   final Set<int> _readPostNumbers = {};
   int _currentVisibleStreamIndex = 1;
+  int _currentVisiblePostNumber = 1;
 
   /// stream 索引
   final ValueNotifier<int> streamIndexNotifier = ValueNotifier<int>(1);
+
+  /// 当前可见帖子的 postNumber（用于进度显示）
+  final ValueNotifier<int> postNumberNotifier = ValueNotifier<int>(1);
 
   Timer? _screenTrackThrottleTimer;
   bool _trackEnabled;
@@ -397,6 +401,14 @@ class TopicDetailController extends ChangeNotifier {
     }
   }
 
+  /// 更新当前可见的帖子编号（用于进度显示）
+  void updatePostNumber(int postNumber) {
+    if (postNumber != _currentVisiblePostNumber) {
+      _currentVisiblePostNumber = postNumber;
+      postNumberNotifier.value = postNumber;
+    }
+  }
+
   /// 获取刷新时的锚点帖子号
   int getRefreshAnchorPostNumber(int? fallbackPostNumber) {
     if (_visiblePostNumbers.isNotEmpty) {
@@ -425,6 +437,7 @@ class TopicDetailController extends ChangeNotifier {
     // 可见性相关
     _screenTrackThrottleTimer?.cancel();
     streamIndexNotifier.dispose();
+    postNumberNotifier.dispose();
 
     super.dispose();
   }
