@@ -1,6 +1,6 @@
 // 搜索结果数据模型
-import '../constants.dart';
 import '../utils/time_utils.dart';
+import '../utils/url_helper.dart';
 import 'topic.dart';
 
 /// 搜索结果响应
@@ -51,6 +51,8 @@ class SearchResult {
   }
 
   bool get isEmpty => posts.isEmpty && users.isEmpty;
+  /// AI 搜索摘要
+  String? get aiAnswer => groupedResult.aiAnswer;
   /// 是否有更多帖子结果
   /// 全页面搜索使用 more_full_page_results，头部搜索使用 more_posts
   bool get hasMorePosts => groupedResult.moreFullPageResults || groupedResult.morePosts;
@@ -98,10 +100,7 @@ class SearchPost {
   }
 
   String getAvatarUrl({int size = 120}) {
-    if (avatarTemplate.isEmpty) return '';
-    final url = avatarTemplate.replaceAll('{size}', '$size');
-    if (url.startsWith('http')) return url;
-    return '${AppConstants.baseUrl}$url';
+    return UrlHelper.resolveAvatarUrl(avatarTemplate: avatarTemplate, size: size);
   }
 }
 
@@ -169,10 +168,7 @@ class SearchUser {
   }
 
   String getAvatarUrl({int size = 120}) {
-    if (avatarTemplate.isEmpty) return '';
-    final url = avatarTemplate.replaceAll('{size}', '$size');
-    if (url.startsWith('http')) return url;
-    return '${AppConstants.baseUrl}$url';
+    return UrlHelper.resolveAvatarUrl(avatarTemplate: avatarTemplate, size: size);
   }
 }
 
@@ -185,6 +181,9 @@ class GroupedSearchResult {
   final bool moreFullPageResults;
   final int? searchLogId;
 
+  /// AI 搜索摘要（discourse-ai 插件提供，HTML 格式）
+  final String? aiAnswer;
+
   GroupedSearchResult({
     required this.term,
     required this.morePosts,
@@ -192,6 +191,7 @@ class GroupedSearchResult {
     required this.moreCategories,
     required this.moreFullPageResults,
     this.searchLogId,
+    this.aiAnswer,
   });
 
   factory GroupedSearchResult.fromJson(Map<String, dynamic> json) {
@@ -202,6 +202,7 @@ class GroupedSearchResult {
       moreCategories: json['more_categories'] as bool? ?? false,
       moreFullPageResults: json['more_full_page_results'] as bool? ?? false,
       searchLogId: json['search_log_id'] as int?,
+      aiAnswer: json['ai_answer'] as String?,
     );
   }
 }
