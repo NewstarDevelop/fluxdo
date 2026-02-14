@@ -144,8 +144,8 @@ class WebViewHttpAdapter implements HttpClientAdapter {
     final completer = Completer<String>();
     _pendingRequests[requestId] = completer;
     
-    // 检查是否需要二进制响应
-    final isBinary = options.responseType == ResponseType.bytes;
+    // 检查是否需要二进制响应（stream 也视为二进制，避免图片等二进制数据被当作文本读取导致损坏）
+    final isBinary = options.responseType == ResponseType.bytes || options.responseType == ResponseType.stream;
     
     // 构建脚本 - 使用 JS Handler 回调
     final script = '''

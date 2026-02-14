@@ -184,7 +184,7 @@ class _CreateTopicPageState extends ConsumerState<CreateTopicPage> {
     }
   }
 
-  void _applyCurrentFilter() async {
+  Future<void> _applyCurrentFilter() async {
     // 优先使用传入的分类，否则使用站点默认分类
     int? targetCategoryId = widget.initialCategoryId;
     targetCategoryId ??= await PreloadedDataService().getDefaultComposerCategoryId();

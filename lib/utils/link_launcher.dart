@@ -45,6 +45,13 @@ Future<void> launchExternalLink(BuildContext context, String url) async {
   final uri = Uri.tryParse(url);
   if (uri == null) return;
 
+  // 在任何 async gap 之前读取偏好设置
+  final prefs = ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(preferencesProvider);
+  final preferInApp = prefs.openExternalLinksInAppBrowser;
+
   // 链接安全检查
   final config = AppConstants.siteCustomization.linkSecurityConfig;
   if (config != null && config.enableExitConfirmation) {
@@ -73,15 +80,8 @@ Future<void> launchExternalLink(BuildContext context, String url) async {
     }
   }
 
-  final prefs = ProviderScope.containerOf(
-    // ignore: use_build_context_synchronously
-    context,
-    listen: false,
-  ).read(preferencesProvider);
-  final preferInApp = prefs.openExternalLinksInAppBrowser;
-
   if (preferInApp && (uri.scheme == 'http' || uri.scheme == 'https')) {
-    // ignore: use_build_context_synchronously
+    if (!context.mounted) return;
     WebViewPage.open(context, url);
     return;
   }
