@@ -422,7 +422,7 @@ class MarkdownEditorState extends ConsumerState<MarkdownEditor> {
   }
 
   /// 自定义粘贴回调：优先粘贴图片，无图片时回退文本粘贴
-  void _handleCustomPaste(EditableTextState editableTextState) async {
+  Future<void> _handleCustomPaste(EditableTextState editableTextState) async {
     editableTextState.hideToolbar();
 
     final hasImage = await MarkdownToolbarState.clipboardHasImage();
