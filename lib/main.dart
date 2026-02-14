@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -45,38 +46,50 @@ Future<void> main() async {
     await windowManager.ensureInitialized();
   }
 
-  // 初始化 User-Agent（获取 WebView UA 并移除 wv 标识）
-  await AppConstants.initUserAgent();
+  // Android 沉浸式导航栏（edge-to-edge）
+  if (Platform.isAndroid) {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
+  }
 
   // 初始化语法高亮服务（预热 Isolate Worker 和字体）
   HighlighterService.instance.initialize(); // 不需要 await，后台初始化
 
-  // 初始化 SharedPreferences
-  final prefs = await SharedPreferences.getInstance();
+  // === 第一阶段：无依赖的初始化并行执行 ===
+  final prefsFuture = SharedPreferences.getInstance();
+  // Windows 上延迟初始化 UA（WebView2 启动慢），使用默认 UA 先行
+  // 移动端需要尽早获取以便登录 WebView 使用正确的 UA
+  if (!Platform.isWindows) {
+    AppConstants.initUserAgent(); // 后台初始化，不阻塞
+  }
+  final cookieJarFuture = CookieJarService().initialize();
+  final cookieSyncFuture = CookieSyncService().init();
+  final proxyCertFuture = ProxyCertificate.initialize();
 
-  // 初始化 CF 验证日志（仅开发者模式启用）
-  await CfChallengeLogger.setEnabled(prefs.getBool('developer_mode') ?? false);
+  // 等待 SharedPreferences（后续初始化依赖它）
+  final prefs = await prefsFuture;
 
-  // 初始化代理 CA 证书（非 Android 平台）
-  await ProxyCertificate.initialize();
+  // === 第二阶段：依赖 prefs 的初始化并行执行 ===
+  await Future.wait([
+    cookieJarFuture,
+    cookieSyncFuture,
+    proxyCertFuture,
+    CfChallengeLogger.setEnabled(prefs.getBool('developer_mode') ?? false),
+    CronetFallbackService.instance.initialize(prefs),
+    NetworkSettingsService.instance.initialize(prefs),
+    ProxySettingsService.instance.initialize(prefs),
+  ]);
 
-  // 初始化 Cronet 降级服务
-  await CronetFallbackService.instance.initialize(prefs);
-
-  // 初始化网络设置（DoH/代理）
-  await NetworkSettingsService.instance.initialize(prefs);
-
-  // 初始化 HTTP 代理设置
-  await ProxySettingsService.instance.initialize(prefs);
-
-  // 初始化 CookieJar（持久化 Cookie 管理）
-  await CookieJarService().initialize();
-
-  // 初始化 Cookie 同步服务（CSRF token 等）
-  await CookieSyncService().init();
-
-  // 初始化本地通知服务（请求权限）
+  // 初始化本地通知服务（请求权限，不阻塞）
   LocalNotificationService().initialize();
+
+  // Windows 上后台初始化 UA（不阻塞启动）
+  if (Platform.isWindows) {
+    AppConstants.initUserAgent();
+  }
 
   runApp(ProviderScope(
     overrides: [
@@ -120,7 +133,15 @@ class MainApp extends ConsumerWidget {
           );
         }
 
+        // Windows/macOS 默认字体不含中文，需指定中文字体避免回退不一致
+        final String? fontFamily = Platform.isWindows
+            ? 'Microsoft YaHei'
+            : Platform.isMacOS
+                ? 'PingFang SC'
+                : null;
+
         return MaterialApp(
+          scrollBehavior: const _AppScrollBehavior(),
           navigatorKey: navigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
           title: 'FluxDO',
@@ -139,10 +160,12 @@ class MainApp extends ConsumerWidget {
           theme: ThemeData(
             colorScheme: lightScheme,
             useMaterial3: true,
+            fontFamily: fontFamily,
           ),
           darkTheme: ThemeData(
             colorScheme: darkScheme,
             useMaterial3: true,
+            fontFamily: fontFamily,
           ),
           home: const OnboardingGate(
             child: PreheatGate(child: MainPage()),
@@ -169,6 +192,7 @@ class _MainPageState extends ConsumerState<MainPage> {
   bool _messageBusInitialized = false;
   int? _lastTappedIndex;
   DateTime? _lastTapTime;
+  DateTime? _lastBackPressTime;
 
   final List<Widget> _pages = const [
     TopicsScreen(),
@@ -238,7 +262,7 @@ class _MainPageState extends ConsumerState<MainPage> {
       // 双击当前 tab，滚动到顶部
       if (index == 0) {
         ref.read(scrollToTopProvider.notifier).trigger();
-        ref.read(barVisibilityProvider.notifier).state = 1.0;
+        ref.read(barVisibilityProvider.notifier).set(1.0);
       }
       _lastTappedIndex = null;
       _lastTapTime = null;
@@ -247,7 +271,7 @@ class _MainPageState extends ConsumerState<MainPage> {
       _lastTapTime = now;
       if (index != _currentIndex) {
         // 切换 tab 时重置底栏可见性
-        ref.read(barVisibilityProvider.notifier).state = 1.0;
+        ref.read(barVisibilityProvider.notifier).set(1.0);
         setState(() => _currentIndex = index);
       }
     }
@@ -286,11 +310,32 @@ class _MainPageState extends ConsumerState<MainPage> {
     final user = currentUserAsync.value;
 
     // 首页的 FAB 由 TopicsScreen 内部处理，避免切换时闪烁
-    return AdaptiveScaffold(
-      selectedIndex: _currentIndex,
-      onDestinationSelected: _onDestinationSelected,
-      destinations: _buildDestinations(user),
-      body: _pages[_currentIndex],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final now = DateTime.now();
+        if (_lastBackPressTime != null &&
+            now.difference(_lastBackPressTime!).inMilliseconds < 2000) {
+          Navigator.of(context).pop();
+        } else {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('再按一次返回退出'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+        }
+      },
+      child: AdaptiveScaffold(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: _onDestinationSelected,
+        destinations: _buildDestinations(user),
+        body: _pages[_currentIndex],
+      ),
     );
   }
 
@@ -317,5 +362,31 @@ class _MainPageState extends ConsumerState<MainPage> {
         label: '我的',
       ),
     ];
+  }
+}
+
+/// 自定义滚动行为：在 Android 上使用经典的 clamp 效果，
+/// 避免 Android 12+ 的 stretch overscroll 被误认为 Chrome 刷新动画。
+class _AppScrollBehavior extends MaterialScrollBehavior {
+  const _AppScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    // Android 上使用 GlowingOverscrollIndicator（经典 glow 效果）
+    // 而非 Material 3 默认的 StretchingOverscrollIndicator
+    switch (getPlatform(context)) {
+      case TargetPlatform.android:
+        return GlowingOverscrollIndicator(
+          axisDirection: details.direction,
+          color: Theme.of(context).colorScheme.primary,
+          child: child,
+        );
+      default:
+        return child;
+    }
   }
 }

@@ -56,6 +56,10 @@ class WebViewSettings {
     // 保持默认回调（可能需要）
     useShouldOverrideUrlLoading: false,
 
+    // 支持多窗口（Google OAuth 等第三方登录使用 window.open 弹出授权页面）
+    supportMultipleWindows: true,
+    javaScriptCanOpenWindowsAutomatically: true,
+
     // 安全相关
     thirdPartyCookiesEnabled: true,
   );
